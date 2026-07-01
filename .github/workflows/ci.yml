@@ -30,6 +30,6 @@ jobs:
         with:
           context: .
           push: false
-          tags: Spotify-Downloader:test
+          tags: spotify-downloader:test
           cache-from: type=gha
           cache-to: type=gha,mode=max
