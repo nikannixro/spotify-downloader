@@ -220,6 +220,15 @@ def main() -> None:
     if not preflight_checks():
         sys.exit(1)
 
+    # Patch pyrogram session timeout (default ~15s too low for large uploads)
+    import pyrogram.session.session as _sess
+    _orig_invoke = _sess.Session.invoke
+
+    async def _patched_invoke(self, *args, retries=None, timeout=20, **kwargs):
+        return await _orig_invoke(self, *args, retries=retries, timeout=timeout, **kwargs)
+
+    _sess.Session.invoke = _patched_invoke
+
     # Create Pyrogram client — handlers loaded manually in on_startup
     app = Client(
         "spotify_bot",
@@ -228,7 +237,6 @@ def main() -> None:
         bot_token=cfg.BOT_TOKEN,
         workdir=".",
         parse_mode=enums.ParseMode.MARKDOWN,
-        timeout=25,
     )
 
     async def _run():
