@@ -1,0 +1,60 @@
+# === Python ===
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+*.egg
+*.so
+
+# === Virtual Environment ===
+.venv/
+venv/
+env/
+ENV/
+
+# === IDE ===
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# === Project Runtime ===
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.log
+cache/
+.cache/
+logs/
+
+# === Docker ===
+.docker/
+docker-compose.override.yml
+
+# === OS ===
+Thumbs.db
+Desktop.ini
+ehthumbs.db
+
+# === Testing ===
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# === Pyrogram Session ===
+*.session
+*.session-journal
+
+# === Project Specific ===
+config.env
+database.db
+bot.log
+logs/bot.log
