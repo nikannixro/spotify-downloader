@@ -1,6 +1,6 @@
 spotdl>=4.5.0
 tgcrypto
-pyrogram>=2.0.0,<3.0.0
+pyrogram>=2.0.106,<3.0.0
 python-dotenv>=1.0.0,<2.0.0
 aiosqlite>=0.20.0,<1.0.0
 structlog>=24.0.0,<27.0.0
