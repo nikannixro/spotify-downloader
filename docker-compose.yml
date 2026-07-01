@@ -1,0 +1,21 @@
+services:
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: Spotify-Downloader
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - bot_data:/app/data
+      - bot_cache:/app/cache
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  bot_data:
+  bot_cache:
