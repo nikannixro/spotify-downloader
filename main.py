@@ -220,6 +220,10 @@ def main() -> None:
     if not preflight_checks():
         sys.exit(1)
 
+    # Increase default timeout for file uploads (default 15s too low)
+    import pyrogram.session.session as _sess
+    _sess.Session.invoke.__defaults__ = (10, 20, 10)
+
     # Create Pyrogram client — handlers loaded manually in on_startup
     app = Client(
         "spotify_bot",
