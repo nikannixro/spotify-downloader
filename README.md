@@ -132,32 +132,22 @@ git clone https://github.com/nikannixro/Spotify-Downloader.git
 cd Spotify-Downloader
 ```
 
-**2. Install system dependencies**
-
-```bash
-# Debian/Ubuntu
-apt update && apt install -y ffmpeg
-
-# macOS
-brew install ffmpeg
-```
-
-**3. Install Python dependencies**
+**4. Install Python dependencies**
 
 ```bash
 pip install -r requirements.txt
 ```
 
-**4. Set up environment variables**
+**5. Set up environment variables**
 
 ```bash
 cp example.env config.env
 nano config.env
 ```
 
-**5. Export YouTube cookies** (see [Cookies Setup](#cookies-setup))
+**6. Export YouTube cookies** (see [Cookies Setup](#cookies-setup))
 
-**6. Run the bot**
+**7. Run the bot**
 
 ```bash
 python main.py
