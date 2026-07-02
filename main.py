@@ -220,14 +220,9 @@ def main() -> None:
     if not preflight_checks():
         sys.exit(1)
 
-    # Patch pyrogram session timeout (default ~15s too low for large uploads)
+    # Increase default timeout for file uploads (default 15s too low)
     import pyrogram.session.session as _sess
-    _orig_invoke = _sess.Session.invoke
-
-    async def _patched_invoke(self, *args, retries=None, timeout=20, **kwargs):
-        return await _orig_invoke(self, *args, retries=retries, timeout=timeout, **kwargs)
-
-    _sess.Session.invoke = _patched_invoke
+    _sess.Session.invoke.__defaults__ = (10, 20, 10)
 
     # Create Pyrogram client — handlers loaded manually in on_startup
     app = Client(

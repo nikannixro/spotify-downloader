@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import re
 
-from pyrogram import Client
+from pyrogram import Client, enums
 from pyrogram.types import (
     CallbackQuery,
     InlineKeyboardButton,
@@ -33,10 +33,10 @@ CHANNEL_URL_RE: re.Pattern[str] = re.compile(r"https?://t\.me/([a-zA-Z0-9_]+)")
 async def _channel_text(lock: str, db) -> tuple[str, list[list[InlineKeyboardButton]]]:
     """Build the forced-join channel settings text and keyboard."""
     text = (
-        "⋆ با فعال کردن این قابلیت\n"
-        "⋆ میتوان کانالی در ربات ثبت کرد\n"
-        "⋆ ربات کاربران را اجبار به عضویت در آن میکند\n"
-        "⋆ تا اجازه استفاده از ربات را داشته باشند"
+        "• با فعال کردن این قابلیت\n"
+        "⋆ می‌توان گروه یا کانالی در ربات ثبت کرد\n"
+        "⋆ ربات کاربران را اجبار به عضویت در آن می‌کند\n"
+        "⋆ تا اجازه چت کردن در گروه را داشته باشند"
     )
     kb: list[list[InlineKeyboardButton]] = [
         [InlineKeyboardButton(f"قفل عضویت اجباری: {lock}", callback_data="c_toggle")],
@@ -46,7 +46,7 @@ async def _channel_text(lock: str, db) -> tuple[str, list[list[InlineKeyboardBut
         dest = "تنظیم شده" if channels else "تنظیم نشده"
         kb.append([InlineKeyboardButton(f"مقصد: {dest}", callback_data="c_destination")])
         current_msg = await db.get_setting("join_message", DEFAULT_JOIN_MSG)
-        msg_status = "پیشفرض" if current_msg == DEFAULT_JOIN_MSG else "دستی"
+        msg_status = "پیش فرض" if current_msg == DEFAULT_JOIN_MSG else "دستی"
         kb.append(
             [
                 InlineKeyboardButton(
@@ -96,7 +96,7 @@ async def _handle_c_preview(callback_query: CallbackQuery, db) -> int:
     msg = await db.get_setting("join_message", DEFAULT_JOIN_MSG)
     await callback_query.message.reply_text(msg, reply_markup=join_keyboard(channels))
     current_msg = msg
-    msg_status = "پیشفرض" if current_msg == DEFAULT_JOIN_MSG else "دستی"
+    msg_status = "پیش فرض" if current_msg == DEFAULT_JOIN_MSG else "دستی"
     kb = InlineKeyboardMarkup(
         [
             [InlineKeyboardButton("✏️ تغییر متن پیام", callback_data="c_edit_join_msg")],
@@ -155,10 +155,10 @@ async def _handle_c_del(
     get_user_data(callback_query.from_user.id).pop("on_admin_main", None)
     await db.remove_channel(channel_id)
     text = (
-        "⋆ با فعال کردن این قابلیت\n"
-        "⋆ میتوان کانالی در ربات ثبت کرد\n"
-        "⋆ ربات کاربران را اجبار به عضویت در آن میکند\n"
-        "⋆ تا اجازه استفاده از ربات را داشته باشند"
+        "• با فعال کردن این قابلیت\n"
+        "⋆ می‌توان گروه یا کانالی در ربات ثبت کرد\n"
+        "⋆ ربات کاربران را اجبار به عضویت در آن می‌کند\n"
+        "⋆ تا اجازه چت کردن در گروه را داشته باشند"
     )
     await _safe_edit(callback_query, text, await channels_keyboard())
 
@@ -177,10 +177,11 @@ async def h_chan_id_handler(client: Client, message: Message) -> int:
 
     if text.startswith("@"):
         await message.reply_text(
-            "❌ کانال یافت نشد.\n\n"
+            "❌ خطا کانال یافت نشد\n\n"
             "لطفاً مطمئن شوید:\n"
             "• آیدی کانال صحیح است\n"
-            "• ربات در کانال عضو و ادمین است",
+            "• ربات در کانال عضو و ادمین است\n"
+            "• ربات دسترسی خواندن پیام را دارد",
             reply_markup=back_reply_keyboard(),
         )
         return AdminState.WAIT_CHAN_ID
@@ -190,27 +191,27 @@ async def h_chan_id_handler(client: Client, message: Message) -> int:
         match = CHANNEL_URL_RE.search(text)
         if match:
             channel_id = f"@{match.group(1)}"
+    elif not text.startswith("@") and not text.lstrip("-").isdigit():
+        channel_id = f"@{text}"
+
+    CHANNEL_ERROR = (
+        "❌ خطا کانال یافت نشد\n\n"
+        "لطفاً مطمئن شوید:\n"
+        "• آیدی کانال صحیح است\n"
+        "• ربات در کانال عضو و ادمین است\n"
+        "• ربات دسترسی خواندن پیام را دارد"
+    )
 
     try:
         chat = await client.get_chat(channel_id)
         bot_member = await client.get_chat_member(chat.id, client.me.id)
 
         if chat.type.value != "channel":
-            await message.reply_text(
-                "❌ خطا کانال یافت نشد\n\n"
-                "لطفاً مطمئن شوید:\n"
-                "• آیدی کانال صحیح است\n"
-                "• ربات در کانال عضو و ادمین است\n"
-                "• ربات دسترسی خواندن پیام را دارد",
-                reply_markup=back_reply_keyboard(),
-            )
+            await message.reply_text(CHANNEL_ERROR, reply_markup=back_reply_keyboard())
             return AdminState.WAIT_CHAN_ID
 
-        if bot_member.status not in ("administrator", "creator"):
-            await message.reply_text(
-                "❌ ربات باید ادمین کانال باشد.\nلطفاً ربات را به عنوان ادمین به کانال اضافه کنید.",
-                reply_markup=back_reply_keyboard(),
-            )
+        if bot_member.status not in (enums.ChatMemberStatus.ADMINISTRATOR, enums.ChatMemberStatus.OWNER):
+            await message.reply_text(CHANNEL_ERROR, reply_markup=back_reply_keyboard())
             return AdminState.WAIT_CHAN_ID
 
         try:
@@ -228,10 +229,10 @@ async def h_chan_id_handler(client: Client, message: Message) -> int:
             reply_markup=None,
         )
         text = (
-            "⋆ با فعال کردن این قابلیت\n"
-            "⋆ میتوان کانالی در ربات ثبت کرد\n"
-            "⋆ ربات کاربران را اجبار به عضویت در آن میکند\n"
-            "⋆ تا اجازه استفاده از ربات را داشته باشند"
+            "• با فعال کردن این قابلیت\n"
+            "⋆ می‌توان گروه یا کانالی در ربات ثبت کرد\n"
+            "⋆ ربات کاربران را اجبار به عضویت در آن می‌کند\n"
+            "⋆ تا اجازه چت کردن در گروه را داشته باشند"
         )
         await message.reply_text(
             text,

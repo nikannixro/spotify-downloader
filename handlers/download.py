@@ -135,7 +135,7 @@ async def handle_spotify_link(client: Client, message: Message) -> None:
         download_manager.register(user_id, task)
     try:
         if link_type == SpotifyLinkType.TRACK:
-            await _download_single_track(client, message, user_id, resource_id)
+            await _download_single_track(client, message, user_id, resource_id, task)
         elif link_type == SpotifyLinkType.ALBUM:
             await _download_collection(
                 client,
@@ -143,6 +143,7 @@ async def handle_spotify_link(client: Client, message: Message) -> None:
                 user_id,
                 get_spotdl().get_album_songs(f"https://open.spotify.com/album/{resource_id}"),
                 is_album=True,
+                task=task,
             )
         elif link_type == SpotifyLinkType.PLAYLIST:
             await _download_collection(
@@ -151,6 +152,7 @@ async def handle_spotify_link(client: Client, message: Message) -> None:
                 user_id,
                 get_spotdl().get_playlist_songs(f"https://open.spotify.com/playlist/{resource_id}"),
                 is_album=False,
+                task=task,
             )
     finally:
         if task:
@@ -158,15 +160,16 @@ async def handle_spotify_link(client: Client, message: Message) -> None:
 
 
 async def _download_single_track(
-    client: Client, message: Message, user_id: int, track_id: str
+    client: Client, message: Message, user_id: int, track_id: str, task: asyncio.Task | None = None
 ) -> None:
     """Download a single Spotify track with full message flow."""
     spotdl = get_spotdl()
     url = f"https://open.spotify.com/track/{track_id}"
 
+    task_id = id(task) if task else 0
     status_msg = await message.reply_text(
         "⬇️ Downloading...",
-        reply_markup=cancel_download_keyboard(user_id),
+        reply_markup=cancel_download_keyboard(user_id, task_id),
     )
 
     try:
@@ -198,6 +201,8 @@ async def _download_single_track(
     with contextlib.suppress(Exception):
         await status_msg.delete()
 
+    db = get_db()
+    await db.log_download(user_id, result.metadata.track_id, f"{result.metadata.artists} - {result.metadata.name}")
     await _send_track(message, result)
     with contextlib.suppress(Exception):
         await message.reply_text(DL_DONE)
@@ -209,6 +214,7 @@ async def _download_collection(
     user_id: int,
     get_info_coro,
     is_album: bool,
+    task: asyncio.Task | None = None,
 ) -> None:
     """Download an album or playlist."""
     try:
@@ -228,9 +234,10 @@ async def _download_collection(
 
     await _send_collection_info(message, info, is_album=is_album)
 
+    task_id = id(task) if task else 0
     status_msg = await message.reply_text(
         "⬇️ Downloading...",
-        reply_markup=cancel_download_keyboard(user_id),
+        reply_markup=cancel_download_keyboard(user_id, task_id),
     )
 
     spotdl = get_spotdl()
@@ -253,6 +260,8 @@ async def _download_collection(
             continue
 
         if result.success and result.metadata:
+            db = get_db()
+            await db.log_download(user_id, result.metadata.track_id, f"{result.metadata.artists} - {result.metadata.name}")
             results.append(result)
 
     with contextlib.suppress(Exception):

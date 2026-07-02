@@ -39,6 +39,17 @@ def cancel_all(user_id: int) -> int:
     return count
 
 
+def cancel_task(user_id: int, task_id: int) -> bool:
+    """Cancel a specific task by its id(); return True if a task was cancelled."""
+    tasks = _user_tasks.get(user_id, set())
+    for task in tasks:
+        if id(task) == task_id and not task.done():
+            task.cancel()
+            _user_cancelled.add(user_id)
+            return True
+    return False
+
+
 def is_cancelled(user_id: int) -> bool:
     """Return True if the user has triggered a cancellation."""
     return user_id in _user_cancelled

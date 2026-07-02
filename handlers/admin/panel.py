@@ -26,7 +26,7 @@ from utils.keyboards import (
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_JOIN_MSG = "سلام . خوش اومدی🌹\n✨ برای استفاده از ربات، لطفاً ابتدا در کانالها عضو شوید:"
+DEFAULT_JOIN_MSG = "سلام خوش اومدی🌹\n✨ برای استفاده از ربات، لطفاً ابتدا در کانال‌ها عضو شوید:"
 
 
 async def _safe_edit(
@@ -185,7 +185,7 @@ async def _handle_a_recent_dl(
     else:
         lines = ["📥 **۱۰ دانلود اخیر:**\n"]
         for r in rows:
-            lines.append(f"• `{r['user_id']}` — {r['track_name']} ({r['log_date']})")
+            lines.append(f"• {r['track_name']}")
         text = "\n".join(lines)
     await _safe_edit(callback_query, text)
     return AdminState.ADMIN_CHOOSE

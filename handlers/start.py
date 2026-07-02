@@ -5,7 +5,7 @@ from __future__ import annotations
 import contextlib
 import logging
 
-from pyrogram import Client, filters
+from pyrogram import Client, enums, filters
 from pyrogram.types import CallbackQuery, Message
 
 import plugins.download_manager as download_manager
@@ -30,7 +30,7 @@ async def _check_membership(client: Client, user_id: int) -> list[ChannelRecord]
     for channel in await db.get_channels():
         try:
             member = await client.get_chat_member(chat_id=channel.channel_id, user_id=user_id)
-            if member.status not in ("member", "administrator", "creator"):
+            if member.status not in (enums.ChatMemberStatus.MEMBER, enums.ChatMemberStatus.ADMINISTRATOR, enums.ChatMemberStatus.OWNER):
                 not_joined.append(channel)
         except Exception:
             not_joined.append(channel)
@@ -88,12 +88,15 @@ async def enforce_membership(client: Client, message: Message) -> bool:
             await message.reply_text(MAINTENANCE)
         return False
 
+    if await db.get_setting("force_join_enabled") != "1":
+        return True
+
     not_joined = await _check_membership(client, user_id)
     if not_joined:
         kb = join_keyboard(not_joined)
         msg = await db.get_setting(
             "join_message",
-            "برای استفاده از ربات، ابتدا در کانالهای زیر عضو شوید 🔗",
+            "سلام خوش اومدی🌹\n✨ برای استفاده از ربات، لطفاً ابتدا در کانال‌ها عضو شوید:",
         )
         await message.reply_text(msg, reply_markup=kb)
         return False

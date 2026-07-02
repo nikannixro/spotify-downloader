@@ -47,7 +47,7 @@ async def inline_search(client: Client, inline_query: InlineQuery) -> None:
                 switch_pm_parameter="maintenance",
             )
             return
-        if await db.get_channels():
+        if await db.get_setting("force_join_enabled") == "1":
             not_joined = await _check_membership(client, user_id)
             if not_joined:
                 await inline_query.answer(

@@ -12,10 +12,10 @@ from pyrogram.types import (
 from models import ChannelRecord
 
 
-def cancel_download_keyboard(user_id: int) -> InlineKeyboardMarkup:
+def cancel_download_keyboard(user_id: int, task_id: int) -> InlineKeyboardMarkup:
     """Build an inline keyboard with a cancel download button."""
     return InlineKeyboardMarkup(
-        [[InlineKeyboardButton("❌ Cancel", callback_data=f"cancel_dl:{user_id}")]]
+        [[InlineKeyboardButton("❌ Cancel", callback_data=f"cancel_dl:{user_id}:{task_id}")]]
     )
 
 
@@ -77,7 +77,7 @@ async def channels_keyboard() -> InlineKeyboardMarkup:
         from handlers.admin.panel import DEFAULT_JOIN_MSG
 
         current_msg = await db.get_setting("join_message", DEFAULT_JOIN_MSG)
-        msg_status = "پیشفرض" if current_msg == DEFAULT_JOIN_MSG else "دستی"
+        msg_status = "پیش فرض" if current_msg == DEFAULT_JOIN_MSG else "دستی"
         kb.append(
             [
                 InlineKeyboardButton(
@@ -163,7 +163,7 @@ async def log_channel_keyboard() -> InlineKeyboardMarkup:
     channel_status = "تنظیم شده" if log_channel_id else "تنظیم نشده"
 
     kb = [
-        [InlineKeyboardButton(f"قفل لاگ کانال: {lock_status}", callback_data="lc_toggle")],
+        [InlineKeyboardButton(f"کانال لاگ: {lock_status}", callback_data="lc_toggle")],
     ]
 
     if log_channel_enabled:
@@ -171,5 +171,4 @@ async def log_channel_keyboard() -> InlineKeyboardMarkup:
         if log_channel_id:
             kb.append([InlineKeyboardButton("🗑 حذف کانال لاگ", callback_data="lc_remove")])
 
-    kb.append([InlineKeyboardButton("🔙 بازگشت", callback_data="a_back")])
     return InlineKeyboardMarkup(kb)

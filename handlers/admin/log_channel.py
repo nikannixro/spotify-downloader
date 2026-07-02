@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import re
 
-from pyrogram import Client
+from pyrogram import Client, enums
 from pyrogram.types import CallbackQuery, Message
 
 from handlers.states import get_user_data
@@ -26,10 +26,8 @@ async def _log_channel_text(db) -> tuple[str, list]:
     log_channel_id = await db.get_setting("log_channel_id", "")
 
     text = (
-        "📋 **تنظیمات کانال لاگ**\n\n"
-        "⋆ با فعال کردن این قابلیت، لاگهای خطا و هشدار به کانال ارسال میشوند\n"
-        "⋆ فقط لاگهای ❌ خطا و ⚠️ هشدار ارسال میشوند\n"
-        "⋆ لاگهای اطلاعات و موفقیت ارسال نمیشوند"
+        "📋 **کانال لاگ**\n\n"
+        "• با فعال کردن این قابلیت، لاگهای Error و Warning به کانال تنظیم شده ارسال میشوند"
     )
 
     kb = await log_channel_keyboard()
@@ -123,7 +121,7 @@ async def h_log_channel_handler(client: Client, message: Message) -> int:
             return AdminState.WAIT_LOG_CHANNEL
 
         # Validate bot is admin
-        if bot_member.status not in ("administrator", "creator"):
+        if bot_member.status not in (enums.ChatMemberStatus.ADMINISTRATOR, enums.ChatMemberStatus.OWNER):
             await message.reply_text(
                 "❌ ربات باید ادمین کانال باشد.\n"
                 "لطفاً ربات را به عنوان ادمین به کانال اضافه کنید.",

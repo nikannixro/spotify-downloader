@@ -63,15 +63,17 @@ async def handle_callback(client: Client, callback_query: CallbackQuery) -> None
 
     # --- Cancel download ---
     if data and data.startswith("cancel_dl:"):
-        target_user_id = int(data.split(":")[1])
+        parts = data.split(":")
+        target_user_id = int(parts[1])
+        task_id = int(parts[2])
         if user_id == target_user_id:
-            count = download_manager.cancel_all(user_id)
-            download_manager.cleanup_user_files(user_id)
-            with contextlib.suppress(Exception):
-                await callback_query.message.edit_text(CANCELLED_FA)
-            if count == 0:
+            cancelled = download_manager.cancel_task(user_id, task_id)
+            if not cancelled:
                 await callback_query.answer(NO_ACTIVE_DL)
             else:
+                download_manager.cleanup_user_files(user_id)
+                with contextlib.suppress(Exception):
+                    await callback_query.message.edit_text(CANCELLED_FA)
                 await callback_query.answer()
         return
 
