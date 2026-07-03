@@ -248,7 +248,7 @@ def main() -> None:
     try:
         app.run(_run())
     except KeyboardInterrupt:
-        log.info("bot.stopped_by_user")
+        log.info("bot.stopped")
 
 
 if __name__ == "__main__":

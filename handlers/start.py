@@ -48,6 +48,20 @@ async def cmd_start(client: Client, message: Message) -> None:
         if await db.get_setting("maintenance_mode") == "1":
             await message.reply_text(MAINTENANCE)
             return
+
+    # Deep link: /start verify → show forced-join channels
+    args = message.text.split(maxsplit=1)
+    if len(args) > 1 and args[1] == "verify":
+        not_joined = await _check_membership(client, user_id)
+        if not_joined:
+            kb = join_keyboard(not_joined)
+            msg = await db.get_setting(
+                "join_message",
+                "سلام خوش اومدی🌹\n✨ برای استفاده از ربات، لطفاً ابتدا در کانال‌ها عضو شوید:",
+            )
+            await message.reply_text(msg, reply_markup=kb)
+            return
+
     db = get_db()
     await db.add_user(user_id, message.from_user.username)
     text = await db.get_setting("start_message") or DEFAULT_START_MESSAGE
@@ -60,7 +74,7 @@ async def verify_join_callback(client: Client, callback_query: CallbackQuery) ->
     user_id = callback_query.from_user.id
     not_joined = await _check_membership(client, user_id)
     if not_joined:
-        await callback_query.answer(NOT_JOINED_ALERT, show_alert=True)
+        await callback_query.answer("هنوز جوین نشدی که!")
         return
     await callback_query.answer()
     db = get_db()

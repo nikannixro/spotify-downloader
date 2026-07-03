@@ -23,12 +23,12 @@ def main_keyboard(is_admin: bool = False) -> InlineKeyboardMarkup:
     """Build the main search keyboard, optionally including the admin panel button."""
     kb = [
         [
-            InlineKeyboardButton("Search by artist 👤", switch_inline_query_current_chat="art: "),
-            InlineKeyboardButton("Search by album 💿", switch_inline_query_current_chat="alb: "),
+            InlineKeyboardButton("Search by artist 👤", switch_inline_query_current_chat="artist: "),
+            InlineKeyboardButton("Search by album 💿", switch_inline_query_current_chat="album: "),
         ],
         [
-            InlineKeyboardButton("Search playlist 📁", switch_inline_query_current_chat="pla: "),
-            InlineKeyboardButton("Search track 🎧", switch_inline_query_current_chat="trk: "),
+            InlineKeyboardButton("Search playlist 📁", switch_inline_query_current_chat="playlist: "),
+            InlineKeyboardButton("Search track 🎧", switch_inline_query_current_chat="track: "),
         ],
         [InlineKeyboardButton("Global search 📊", switch_inline_query_current_chat="")],
     ]
@@ -138,7 +138,7 @@ def broadcast_confirm_keyboard(user_count: int) -> InlineKeyboardMarkup:
 
 def join_keyboard(channels: list[ChannelRecord]) -> InlineKeyboardMarkup:
     """Build the mandatory-join channel selection keyboard."""
-    kb = [[InlineKeyboardButton(f"📢 {ch.channel_title}", url=ch.invite_link)] for ch in channels]
+    kb = [[InlineKeyboardButton(ch.channel_title, url=ch.invite_link)] for ch in channels]
     kb.append([InlineKeyboardButton("✅ جوین شدم", callback_data="verify_join")])
     return InlineKeyboardMarkup(kb)
 

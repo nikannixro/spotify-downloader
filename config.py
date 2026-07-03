@@ -36,7 +36,7 @@ class _Config:
     LOG_FILE: str = os.getenv("LOG_FILE", "bot.log")
 
     # Cookie file for yt-dlp (YouTube authentication)
-    COOKIE_FILE: str = os.getenv("COOKIE_FILE", "")
+    COOKIE_FILE: str = os.getenv("COOKIE_FILE", "cookies.txt")
 
 
 cfg = _Config()

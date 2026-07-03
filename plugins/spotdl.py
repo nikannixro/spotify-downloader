@@ -67,7 +67,7 @@ def _song_to_metadata(song) -> TrackMetadata:
 
 
 def _post_process_flac(file_path: str, meta: TrackMetadata) -> None:
-    """Post-process FLAC: clean tags, re-encode to 24-bit (s32) 8ch, then embed metadata."""
+    """Post-process FLAC: clean tags, re-encode to 24-bit 48kHz, then embed metadata."""
     try:
         audio = FLAC(file_path)
         for tag in ["encoder", "comment", "encodedby", "woas", "isrc", "description"]:
@@ -78,12 +78,7 @@ def _post_process_flac(file_path: str, meta: TrackMetadata) -> None:
         re_encoded = _ffmpeg_reencode_flac(file_path)
         if re_encoded and os.path.exists(re_encoded):
             os.replace(re_encoded, file_path)
-            logger.info("Re-encoded to 24-bit 8ch FLAC: %s", os.path.basename(file_path))
-
-        audio = FLAC(file_path)
-        if "encoder" in audio:
-            del audio["encoder"]
-        audio.save()
+            logger.info("Re-encoded FLAC: %s", os.path.basename(file_path))
 
         audio = FLAC(file_path)
 
@@ -131,7 +126,7 @@ def _embed_cover_art(audio: FLAC, cover_url: str) -> None:
 
 
 def _ffmpeg_reencode_flac(file_path: str) -> str | None:
-    """Re-encode FLAC to 24-bit (s32) 8-channel 48kHz with FFmpeg."""
+    """Re-encode FLAC with sample_fmt s24, compression_level 0, 48kHz."""
     import subprocess
 
     file_path = os.path.abspath(file_path)
@@ -141,10 +136,8 @@ def _ffmpeg_reencode_flac(file_path: str) -> str | None:
         "-i", file_path,
         "-map_metadata", "0",
         "-codec:a", "flac",
-        "-b:a", "2500k",
         "-sample_fmt", "s32",
         "-compression_level", "0",
-        "-ac", "8",
         "-ar", "48000",
         output_path,
     ]

@@ -24,10 +24,10 @@ from strings import MAINTENANCE_INLINE, NOT_JOINED_INLINE
 logger = logging.getLogger(__name__)
 
 SEARCH_PREFIXES: dict[str, SearchType] = {
-    "art:": SearchType.ARTIST,
-    "alb:": SearchType.ALBUM,
-    "pla:": SearchType.PLAYLIST,
-    "trk:": SearchType.TRACK,
+    "artist:": SearchType.ARTIST,
+    "album:": SearchType.ALBUM,
+    "playlist:": SearchType.PLAYLIST,
+    "track:": SearchType.TRACK,
 }
 
 _deezer_client = DeezerClient()
