@@ -10,7 +10,7 @@ from yt_dlp import YoutubeDL
 logger = logging.getLogger(__name__)
 
 _YTDL_OPTIONS = {
-    "format": "bestaudio/best",
+    "format": "bestaudio",
     "audioformat": "best",
     "default_search": "ytsearch",
     "noplaylist": True,
