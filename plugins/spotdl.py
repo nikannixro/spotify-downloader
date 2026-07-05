@@ -62,7 +62,7 @@ def _song_to_metadata(song) -> TrackMetadata:
         composer=None,
         writer=None,
         publisher=song.publisher or None,
-        label=song.label or None,
+        label=song.publisher or None,
     )
 
 

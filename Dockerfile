@@ -9,7 +9,7 @@ RUN apt-get update && \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-RUN apt-get purge -y --auto-remove gcc python3-dev && \
+RUN apt-get purge -y gcc python3-dev && \
     rm -rf /var/lib/apt/lists/*
 
 COPY . .
@@ -18,8 +18,6 @@ RUN mkdir -p cache data logs /tmp/ytdl
 RUN useradd -m -r -s /bin/bash botuser && \
     chown -R botuser:botuser /app /tmp/ytdl
 USER botuser
-
-VOLUME ["/app/data", "/app/cache"]
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
     CMD python -c "import sqlite3; sqlite3.connect('data/database.db').execute('SELECT 1').fetchone()" || exit 1

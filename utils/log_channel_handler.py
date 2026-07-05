@@ -27,9 +27,12 @@ class TelegramLogHandler(logging.Handler):
         """Update channel ID and enabled status from database."""
         from services import get_db
 
-        db = get_db()
-        channel_id = await db.get_setting("log_channel_id", "")
-        enabled = await db.get_setting("log_channel_enabled", "0") == "1"
+        try:
+            db = get_db()
+            channel_id = await db.get_setting("log_channel_id", "")
+            enabled = await db.get_setting("log_channel_enabled", "0") == "1"
+        except Exception:
+            return
 
         if channel_id and enabled:
             try:
@@ -74,7 +77,6 @@ class TelegramLogHandler(logging.Handler):
     async def _send_message(self, msg: str) -> None:
         """Send message to the configured channel."""
         try:
-            await self._update_settings()
             if self._enabled and self._channel_id:
                 await self._client.send_message(
                     chat_id=self._channel_id,
