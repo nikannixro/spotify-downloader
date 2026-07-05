@@ -43,15 +43,17 @@ The bot uses [spotDL](https://github.com/spotDL/spotify-downloader) as the downl
 - **Download tracks** — Send any Spotify track link and receive a tagged FLAC file
 - **Download albums** — Full album downloads with cover art and track-by-track delivery
 - **Download playlists** — All tracks fetched and delivered sequentially
+- **Artist profile** — Send a Spotify artist link to see real name, nickname, date of birth (from Wikipedia), and top 10 tracks
 - **Inline search** — Search Spotify directly inside any chat using inline mode
-  - `art: <name>` — Search by artist (Deezer)
-  - `alb: <name>` — Search by album
-  - `pla: <name>` — Search by playlist
-  - `trk: <name>` — Search by track
+  - `artist: <name>` — Search by artist
+  - `album: <name>` — Search by album
+  - `playlist: <name>` — Search by playlist
+  - `track: <name>` — Search by track
   - No prefix — Global search across all types
+- **Deep link downloads** — Click a track link from artist profile to download instantly
 - **Cancel downloads** — `/cancel` or the inline cancel button stops any in-progress download
 - **Rich metadata** — Every file includes title, artist, album, date, genre, track number, composer, publisher, language, and embedded cover art
-- **Lossless FLAC** — 24-bit audio in a 32-bit container, 8-channel, 48kHz
+- **Lossless FLAC** — 32-bit audio, 48kHz sample rate
 
 ### For Admins
 - **Stats** — Total users, downloads today, cache size, bot uptime
@@ -59,9 +61,10 @@ The bot uses [spotDL](https://github.com/spotDL/spotify-downloader) as the downl
 - **Forced channel join** — Make users join Telegram channels before using the bot
 - **Rate limit control** — Adjust per-user download limits and time windows from the panel
 - **Maintenance mode** — Lock the bot for all non-admin users with one tap
-- **Database backup** — Download the full SQLite database file directly in Telegram
+- **Database backup** — Download the full SQLite database as `database (YYYY-MM-DD).db`
 - **Recent downloads** — Check the latest download activity across all users
-- **Log channel** — Forward WARNING/ERROR logs to a dedicated Telegram channel
+- **Log channel** — Forward all logs to a dedicated Telegram channel
+- **Start message** — Customize the `/start` message shown to users
 
 ---
 
@@ -79,20 +82,25 @@ The bot uses [spotDL](https://github.com/spotDL/spotify-downloader) as the downl
           +----------v-+ +---v----+ +--v-----------+
           |   start    | | admin  | |  download    |
           |  handler   | | panel  | |   handler    |
-          +----------+-+ +--------+ +--+- ----------+
+          +----------+-+ +--------+ +--+-----------+
                      |                  |
-          +----------v------------------v----------+
-          |              plugins/                  |
-          |  SpotDLBackend    DownloadCache        |
-          |  DeezerClient     DownloadManager      |
-          +-------------------+-------------------+
+          +----------v-------+  +------v----------+
+          |    inline.py     |  |   callbacks.py  |
+          +----------+-------+  +------+----------+
+                     |                  |
+           +---------v------------------v----------+
+           |              plugins/                 |
+           |  SpotDLBackend   DownloadCache        |
+           |  DeezerClient    DownloadManager      |
+           |  ytdl            ytmusic              |
+           +------------------+-------------------+
                               |
           +-------------------v-------------------+
           |      External tools & services        |
           |  spotDL  yt-dlp  FFmpeg  Mutagen      |
           |  YouTube Music   Spotify API           |
           |  MusicBrainz API   Deezer API          |
-          |  SQLite DB                             |
+          |  Wikipedia API     SQLite DB           |
           +---------------------------------------+
 ```
 
@@ -101,7 +109,7 @@ The bot uses [spotDL](https://github.com/spotDL/spotify-downloader) as the downl
 1. User sends Spotify link → `handle_spotify_link` parses the URL
 2. Membership and rate limit are checked
 3. spotDL fetches track metadata from Spotify and searches YouTube Music for the best match
-4. yt-dlp downloads the audio; FFmpeg converts it to 24-bit FLAC
+4. yt-dlp downloads the audio; FFmpeg converts it to 32-bit FLAC at 48kHz
 5. MusicBrainz queries composer and language using the ISRC
 6. If genre or publisher is missing, Deezer is queried as fallback
 7. Mutagen embeds all metadata tags and cover art into the FLAC file
@@ -116,6 +124,7 @@ The bot uses [spotDL](https://github.com/spotDL/spotify-downloader) as the downl
 | Python | 3.12+ | 3.12 recommended |
 | FFmpeg | — | Required for audio conversion to FLAC |
 | Telegram Bot Token | — | From [@BotFather](https://t.me/BotFather) |
+| Telegram API ID & Hash | — | From [my.telegram.org](https://my.telegram.org) |
 | Spotify API credentials | — | From [Spotify Developer Dashboard](https://developer.spotify.com/dashboard) |
 | YouTube cookies | — | See [Cookies Setup](#cookies-setup) |
 
@@ -249,6 +258,8 @@ All configuration is done through environment variables. Copy `example.env` to `
 |---|---|
 | `TELEGRAM_BOT_TOKEN` | Bot token from [@BotFather](https://t.me/BotFather) |
 | `ADMIN_ID` | Your Telegram numeric user ID |
+| `TELEGRAM_API_ID` | API ID from [my.telegram.org](https://my.telegram.org) |
+| `TELEGRAM_API_HASH` | API hash from [my.telegram.org](https://my.telegram.org) |
 | `SPOTIFY_CLIENT_ID` | Client ID from [Spotify Developer Dashboard](https://developer.spotify.com/dashboard) |
 | `SPOTIFY_CLIENT_SECRET` | Client secret from Spotify Developer Dashboard |
 
@@ -286,6 +297,7 @@ Send any Spotify link to the bot:
 https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC
 https://open.spotify.com/album/6s84SIDdJAm4IVd0FbKWeR
 https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M
+https://open.spotify.com/artist/1dfeR4HaWDbWqFHLkxsg1d
 ```
 
 ### Message Flow
@@ -299,19 +311,28 @@ When you send a Spotify link, the bot responds in this order:
 
 For albums and playlists, the cover art and info are sent first, followed by all audio tracks sequentially.
 
+### Artist Profile
+
+Send a Spotify artist link to view:
+
+- **Real name** — From Wikipedia (with fallback to stage name)
+- **Nickname** — From Spotify
+- **Date of birth** — From Wikipedia (falls back to "Unknown")
+- **Top 10 tracks** — Clickable deep links for instant download
+
 ### Inline Search
 
 Use the bot in inline mode from any chat:
 
 ```
-@YourBotUsername art: ARTIST NAME
-@YourBotUsername alb: ALBUM NAME
-@YourBotUsername pla: PLAYLIST NAME
-@YourBotUsername trk: TRACK NAME
+@YourBotUsername artist: ARTIST NAME
+@YourBotUsername album: ALBUM NAME
+@YourBotUsername playlist: PLAYLIST NAME
+@YourBotUsername track: TRACK NAME
 @YourBotUsername: Global search
 ```
 
-> **Note:** Artist search (`art:`) uses the Deezer API and returns Deezer artist links. All other searches use the Spotify API.
+> **Note:** Artist search uses the Spotify API and returns follower counts from Deezer. All searches return Spotify results.
 
 ---
 
@@ -327,8 +348,8 @@ Access the admin panel with `/admin`. From there:
 | Forced Join | Add/remove mandatory Telegram channels with custom join messages |
 | Rate Limiting | Increase/decrease download limits and time windows without restart |
 | Maintenance Mode | Block all non-admin users while you update the bot |
-| Log Channel | Forward WARNING/ERROR logs to a dedicated Telegram channel |
-| DB Backup | Download the full SQLite database as a file |
+| Log Channel | Forward all logs to a dedicated Telegram channel |
+| DB Backup | Download the database as `database (YYYY-MM-DD).db` |
 | Start Message | Customize the `/start` message shown to users |
 
 ---
@@ -346,27 +367,33 @@ Spotify-Downloader/
 +-- services.py                # Centralized service singletons
 |
 +-- handlers/
-|   +-- admin_states.py        # Per-user conversation state management
-|   +-- start_handler.py       # /start, /cancel, forced-join verification
-|   +-- download_handler.py    # Spotify link detection and download orchestration
-|   +-- inline_handler.py      # Inline search query handler (Spotify + Deezer)
-|   +-- callback_handler.py    # All callback query routing
+|   +-- __init__.py
+|   +-- start.py               # /start, /cancel, forced-join verification, deep links
+|   +-- download.py            # Spotify link detection, download, artist profile
+|   +-- inline.py              # Inline search query handler (Spotify + Deezer)
+|   +-- callbacks.py           # All callback query routing
+|   +-- states.py              # Per-user conversation state management
 |   +-- admin/
-|       +-- panel_handler.py   # Admin panel main menu, stats, backup
-|       +-- broadcast_handler.py  # Broadcast conversation flow
-|       +-- channel_handler.py    # Forced-join channel management
-|       +-- settings_handler.py   # Rate-limit and general settings
-|       +-- log_channel_handler.py  # Log channel management
+|       +-- __init__.py
+|       +-- panel.py           # Admin panel main menu, stats, backup, start msg
+|       +-- broadcast.py       # Broadcast conversation flow
+|       +-- channels.py        # Forced-join channel management
+|       +-- settings.py        # Rate-limit and general settings
+|       +-- log_channel.py     # Log channel management
 |
 +-- plugins/
+|   +-- __init__.py
 |   +-- spotdl.py              # spotDL backend — download engine, metadata, FFmpeg
-|   +-- download_cache.py      # File cache — hit/miss/eviction logic
+|   +-- cache.py               # File cache — hit/miss/eviction logic
 |   +-- download_manager.py    # Per-user task tracking and cancellation
-|   +-- deezer_client.py       # Deezer API client for artist search
+|   +-- deezer.py              # Deezer API client for artist search and top tracks
+|   +-- ytdl.py                # Standalone yt-dlp download module
+|   +-- ytmusic.py             # Artist top tracks via Deezer API
 |
 +-- utils/
-|   +-- telegram_keyboards.py  # All Telegram inline and reply keyboards
-|   +-- formatting.py          # URL parsing, filename sanitization, uptime
+|   +-- __init__.py
+|   +-- keyboards.py           # All Telegram inline and reply keyboards
+|   +-- helpers.py             # URL parsing, filename sanitization, uptime
 |   +-- rate_limiter.py        # Sliding-window per-user rate limiter
 |   +-- log_channel_handler.py # Async logging handler for Telegram log channel
 |
@@ -392,12 +419,12 @@ Every downloaded FLAC file contains:
 | Release Date | Spotify |
 | Genre | Spotify → MusicBrainz → Deezer |
 | Publisher | Spotify → MusicBrainz → Deezer |
+| Label | Spotify → MusicBrainz → Deezer |
 | Composer | MusicBrainz |
 | Language | MusicBrainz |
 | Cover Art | Spotify (embedded) |
-| ISRC | — (not embedded) |
 
-The `encoder`, `comment`, `encodedby`, `WOAS`, and `ISRC` tags are explicitly removed from the final file.
+The `encoder`, `comment`, `encodedby`, `WOAS`, `ISRC`, and `description` tags are explicitly removed from the final file.
 
 ---
 

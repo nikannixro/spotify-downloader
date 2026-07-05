@@ -33,7 +33,7 @@ class _Config:
 
     # Logging
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
-    LOG_FILE: str = os.getenv("LOG_FILE", "bot.log")
+    LOG_FILE: str = os.getenv("LOG_FILE", "logs/bot.log")
 
     # Cookie file for yt-dlp (YouTube authentication)
     COOKIE_FILE: str = os.getenv("COOKIE_FILE", "cookies.txt")
