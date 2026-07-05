@@ -19,8 +19,6 @@ RUN useradd -m -r -s /bin/bash botuser && \
     chown -R botuser:botuser /app /tmp/ytdl
 USER botuser
 
-VOLUME ["/app/data", "/app/cache"]
-
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
     CMD python -c "import sqlite3; sqlite3.connect('data/database.db').execute('SELECT 1').fetchone()" || exit 1
 
