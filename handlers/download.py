@@ -7,6 +7,7 @@ import contextlib
 import logging
 import os
 import re
+import shutil
 from typing import Any
 
 from pyrogram import Client, filters
@@ -230,6 +231,8 @@ async def _download_single_track(
     target = photo_msg or message
     with contextlib.suppress(Exception):
         await target.reply_text(DL_DONE)
+    if result.file_path:
+        shutil.rmtree(os.path.dirname(result.file_path), ignore_errors=True)
 
 
 async def _download_inline_track(
@@ -301,6 +304,8 @@ async def _download_inline_track(
 
     db = get_db()
     await db.log_download(user_id, metadata.track_id, f"{metadata.artists} - {metadata.name}")
+    if result.file_path:
+        shutil.rmtree(os.path.dirname(result.file_path), ignore_errors=True)
 
 
 async def _download_collection(
@@ -373,6 +378,10 @@ async def _download_collection(
 
     with contextlib.suppress(Exception):
         await message.reply_text(DL_DONE)
+
+    for r in results:
+        if r.file_path:
+            shutil.rmtree(os.path.dirname(r.file_path), ignore_errors=True)
 
 
 async def _send_collection_info(
