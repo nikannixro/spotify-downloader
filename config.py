@@ -9,6 +9,7 @@ class _Config:
     # Telegram
     BOT_TOKEN: str = os.environ["TELEGRAM_BOT_TOKEN"]
     ADMIN_ID: str = os.environ["ADMIN_ID"]
+    ADMIN_IDS: str = os.getenv("ADMIN_IDS", "")
     API_ID: str = os.environ["TELEGRAM_API_ID"]
     API_HASH: str = os.environ["TELEGRAM_API_HASH"]
 
@@ -46,5 +47,8 @@ cfg = _Config()
 
 
 def is_admin(uid: int) -> bool:
-    """Return True if *uid* matches the configured admin ID."""
+    """Return True if *uid* matches any configured admin ID."""
+    if cfg.ADMIN_IDS:
+        admins = {s.strip() for s in cfg.ADMIN_IDS.split(",") if s.strip()}
+        return str(uid) in admins
     return str(uid) == cfg.ADMIN_ID

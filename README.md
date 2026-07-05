@@ -263,6 +263,16 @@ All configuration is done through environment variables. Copy `example.env` to `
 | `SPOTIFY_CLIENT_ID` | Client ID from [Spotify Developer Dashboard](https://developer.spotify.com/dashboard) |
 | `SPOTIFY_CLIENT_SECRET` | Client secret from Spotify Developer Dashboard |
 
+### Multiple Admins
+
+To add more than one admin, use `ADMIN_IDS` instead of `ADMIN_ID` (comma-separated):
+
+```
+ADMIN_IDS=123456789,987654321
+```
+
+> **Note:** If `ADMIN_IDS` is set, it takes priority over `ADMIN_ID`.
+
 ### Optional
 
 | Variable | Default | Description |
