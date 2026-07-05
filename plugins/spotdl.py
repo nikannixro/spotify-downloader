@@ -62,7 +62,7 @@ def _song_to_metadata(song) -> TrackMetadata:
         composer=None,
         writer=None,
         publisher=song.publisher or None,
-        label=song.publisher or None,
+        label=song.label or None,
     )
 
 
@@ -437,6 +437,7 @@ class SpotDLBackend:
         finally:
             if user_id:
                 unregister_temp_dir(user_id, tmp_dir)
+            shutil.rmtree(tmp_dir, ignore_errors=True)
 
     async def download_song(self, song, user_id: int = 0) -> DownloadResult:
         """Download a pre-fetched spotDL Song object."""
@@ -488,6 +489,7 @@ class SpotDLBackend:
         finally:
             if user_id:
                 unregister_temp_dir(user_id, tmp_dir)
+            shutil.rmtree(tmp_dir, ignore_errors=True)
 
     async def get_album_songs(self, album_url: str) -> tuple[dict[str, Any] | None, list]:
         """Fetch album metadata and songs."""

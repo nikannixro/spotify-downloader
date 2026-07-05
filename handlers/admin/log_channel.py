@@ -13,7 +13,6 @@ from models import AdminState
 from services import get_db
 from utils.keyboards import back_reply_keyboard
 
-from .panel import _safe_edit
 
 logger = logging.getLogger(__name__)
 
@@ -22,12 +21,9 @@ async def _log_channel_text(db) -> tuple[str, list]:
     """Build log channel settings text and keyboard."""
     from utils.keyboards import log_channel_keyboard
 
-    log_channel_enabled = await db.get_setting("log_channel_enabled", "0") == "1"
-    log_channel_id = await db.get_setting("log_channel_id", "")
-
     text = (
         "📋 **کانال لاگ**\n\n"
-        "• با فعال کردن این قابلیت، لاگهای Error و Warning به کانال تنظیم شده ارسال میشوند"
+        "• با فعال کردن این قابلیت، لاگ های ربات به کانال تنظیم شده ارسال میشوند"
     )
 
     kb = await log_channel_keyboard()

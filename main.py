@@ -18,14 +18,14 @@ from dotenv import load_dotenv
 
 load_dotenv(os.path.join(os.path.dirname(__file__), "config.env"))
 
-import structlog
-from pyrogram import Client, enums
-from pyrogram.methods.utilities.idle import idle
+import structlog  # noqa: E402
+from pyrogram import Client, enums  # noqa: E402
+from pyrogram.methods.utilities.idle import idle  # noqa: E402
 
-import plugins.download_manager as download_manager
-from config import cfg
-from services import close_all, get_cache, get_db
-from utils.log_channel_handler import TelegramLogHandler
+import plugins.download_manager as download_manager  # noqa: E402
+from config import cfg  # noqa: E402
+from services import close_all, get_cache, get_db  # noqa: E402
+from utils.log_channel_handler import TelegramLogHandler  # noqa: E402
 
 _NOISY_LOGGERS: list[str] = [
     "httpx",
@@ -82,7 +82,7 @@ def setup_logging() -> None:
         cache_logger_on_first_use=True,
     )
 
-    _log_channel_handler.setLevel(logging.WARNING)
+    _log_channel_handler.setLevel(logging.DEBUG)
     _log_channel_handler.setFormatter(
         logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
     )
@@ -147,6 +147,11 @@ def preflight_checks() -> bool:
 async def on_startup(app: Client) -> None:
     """Called after Pyrogram client starts — initialize DB, load handlers, cleanup."""
     _log_channel_handler.set_client(app)
+
+    # Cache bot username for deep links
+    me = await app.get_me()
+    cfg.BOT_USERNAME = me.username
+    log.info("bot.username", username=me.username)
 
     db = get_db()
     await db.ensure_initialized()

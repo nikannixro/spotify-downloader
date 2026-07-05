@@ -16,7 +16,6 @@ from config import is_admin
 from handlers.states import clear_state, get_user_data, set_state
 from models import AdminState
 from services import get_cache, get_db
-from strings import DEFAULT_START_MESSAGE
 from utils.helpers import bytes_to_human, server_uptime_string, uptime_string
 from utils.keyboards import (
     admin_main_keyboard,
@@ -201,8 +200,8 @@ async def _handle_a_backup(
         await callback_query.message.reply_text("💾 در حال آمادهسازی بکاپ...")
     backup_path = None
     try:
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_path = os.path.join(tempfile.gettempdir(), f"backup_{timestamp}.db")
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d")
+        backup_path = os.path.join(tempfile.gettempdir(), f"database ({timestamp}).db")
         shutil.copy2(db.get_path(), backup_path)
         with open(backup_path, "rb") as f:
             await callback_query.message.reply_document(

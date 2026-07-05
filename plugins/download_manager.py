@@ -11,11 +11,22 @@ logger = logging.getLogger(__name__)
 _user_tasks: dict[int, set[asyncio.Task]] = {}
 _user_cancelled: set[int] = set()
 _user_temp_dirs: dict[int, set[str]] = {}
+_task_id_counter: int = 0
+_task_id_map: dict[int, asyncio.Task] = {}
 
 
-def register(user_id: int, task: asyncio.Task) -> None:
-    """Register an asyncio task for a user."""
+def _next_task_id() -> int:
+    global _task_id_counter
+    _task_id_counter += 1
+    return _task_id_counter
+
+
+def register(user_id: int, task: asyncio.Task) -> int:
+    """Register an asyncio task for a user. Returns a stable task ID."""
     _user_tasks.setdefault(user_id, set()).add(task)
+    task_id = _next_task_id()
+    _task_id_map[task_id] = task
+    return task_id
 
 
 def unregister(user_id: int, task: asyncio.Task) -> None:
@@ -25,6 +36,10 @@ def unregister(user_id: int, task: asyncio.Task) -> None:
         tasks.discard(task)
         if not tasks:
             _user_tasks.pop(user_id, None)
+    # Clean up task ID mapping
+    stale_ids = [tid for tid, t in _task_id_map.items() if t is task]
+    for tid in stale_ids:
+        _task_id_map.pop(tid, None)
 
 
 def cancel_all(user_id: int) -> int:
@@ -40,13 +55,12 @@ def cancel_all(user_id: int) -> int:
 
 
 def cancel_task(user_id: int, task_id: int) -> bool:
-    """Cancel a specific task by its id(); return True if a task was cancelled."""
-    tasks = _user_tasks.get(user_id, set())
-    for task in tasks:
-        if id(task) == task_id and not task.done():
-            task.cancel()
-            _user_cancelled.add(user_id)
-            return True
+    """Cancel a specific task by its stable ID; return True if a task was cancelled."""
+    task = _task_id_map.get(task_id)
+    if task and not task.done():
+        task.cancel()
+        _user_cancelled.add(user_id)
+        return True
     return False
 
 

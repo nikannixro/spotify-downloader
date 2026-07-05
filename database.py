@@ -187,13 +187,17 @@ class Database:
 
     async def get_recent_downloads(self, limit: int = 10) -> list[dict[str, Any]]:
         conn = await self._get_conn()
-        conn.row_factory = aiosqlite.Row
-        cursor = await conn.execute(
-            "SELECT user_id, track_name, log_date FROM download_log ORDER BY id DESC LIMIT ?",
-            (limit,),
-        )
-        rows = await cursor.fetchall()
-        return [dict(row) for row in rows]
+        old_factory = conn.row_factory
+        try:
+            conn.row_factory = aiosqlite.Row
+            cursor = await conn.execute(
+                "SELECT user_id, track_name, log_date FROM download_log ORDER BY id DESC LIMIT ?",
+                (limit,),
+            )
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+        finally:
+            conn.row_factory = old_factory
 
     # ── channels ──
 

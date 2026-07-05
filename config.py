@@ -38,6 +38,9 @@ class _Config:
     # Cookie file for yt-dlp (YouTube authentication)
     COOKIE_FILE: str = os.getenv("COOKIE_FILE", "cookies.txt")
 
+    # Bot username (populated at startup via client.get_me())
+    BOT_USERNAME: str = ""
+
 
 cfg = _Config()
 

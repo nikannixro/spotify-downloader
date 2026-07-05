@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import logging
 
-from pyrogram import Client
+from pyrogram import Client, enums
 from pyrogram.types import CallbackQuery
 
 import plugins.download_manager as download_manager
@@ -35,7 +36,6 @@ from handlers.admin import (
     _handle_lc_set,
     _handle_lc_toggle,
     _handle_maintenance_toggle,
-    _handle_open_admin,
     _handle_rate_limit_adjust,
     _handle_rate_window_adjust,
     admin_open_callback_handler,
@@ -45,7 +45,7 @@ from handlers.start import verify_join_callback
 from handlers.states import clear_state, get_state, set_state
 from models import AdminState
 from services import get_db
-from strings import CANCELLED_FA, NO_ACTIVE_DL
+from strings import CANCELLED, NO_ACTIVE_DL
 
 logger = logging.getLogger(__name__)
 
@@ -64,17 +64,41 @@ async def handle_callback(client: Client, callback_query: CallbackQuery) -> None
     # --- Cancel download ---
     if data and data.startswith("cancel_dl:"):
         parts = data.split(":")
-        target_user_id = int(parts[1])
-        task_id = int(parts[2])
-        if user_id == target_user_id:
-            cancelled = download_manager.cancel_task(user_id, task_id)
-            if not cancelled:
-                await callback_query.answer(NO_ACTIVE_DL)
+        if len(parts) == 3:
+            target_user_id = int(parts[1])
+            task_id = int(parts[2])
+            if user_id == target_user_id:
+                cancelled = download_manager.cancel_task(user_id, task_id)
+                if not cancelled:
+                    await callback_query.answer(NO_ACTIVE_DL)
+                else:
+                    download_manager.cleanup_user_files(user_id)
+                    with contextlib.suppress(Exception):
+                        await callback_query.message.edit_text(CANCELLED)
+                    await callback_query.answer()
+        return
+
+    # --- Download artist track ---
+    if data and data.startswith("download_artist_track:"):
+        parts = data.split(":")
+        if len(parts) == 3:
+            target_user_id = int(parts[1])
+            track_index = int(parts[2])
+            if user_id == target_user_id:
+                await _handle_download_artist_track(client, callback_query, track_index)
             else:
-                download_manager.cleanup_user_files(user_id)
-                with contextlib.suppress(Exception):
-                    await callback_query.message.edit_text(CANCELLED_FA)
-                await callback_query.answer()
+                await callback_query.answer("❌ این دکمه مال شما نیست!", show_alert=True)
+        return
+
+    # --- Show artist top tracks ---
+    if data and data.startswith("show_artist_tracks:"):
+        parts = data.split(":")
+        if len(parts) == 2:
+            target_user_id = int(parts[1])
+            if user_id == target_user_id:
+                await _handle_show_artist_tracks(client, callback_query)
+            else:
+                await callback_query.answer("❌ این دکمه مال شما نیست!", show_alert=True)
         return
 
     # --- Open admin panel ---
@@ -169,3 +193,101 @@ async def handle_callback(client: Client, callback_query: CallbackQuery) -> None
         set_state(user_id, new_state)
     else:
         clear_state(user_id)
+
+
+async def _handle_download_artist_track(
+    client: Client, callback_query: CallbackQuery, track_index: int
+) -> None:
+    """Handle download request for a specific artist track."""
+    from handlers.download import _artist_tracks_cache, _download_single_track
+    from plugins.spotdl import _ensure_spotdl_init
+    from spotdl.utils.spotify import SpotifyClient
+
+    user_id = callback_query.from_user.id
+
+    tracks = _artist_tracks_cache.get(user_id, [])
+    if track_index >= len(tracks):
+        await callback_query.answer("❌ Track Not Found", show_alert=True)
+        return
+
+    track_info = tracks[track_index]
+    track_title = track_info.get("title", "")
+    artist_name = track_info.get("artist", "")
+
+    await callback_query.answer()
+
+    status_msg = await callback_query.message.reply_text("🔍 در حال جستجوی آهنگ...")
+
+    try:
+        _ensure_spotdl_init()
+        spotify = SpotifyClient()
+        loop = asyncio.get_running_loop()
+
+        def _search_track():
+            query = f"{track_title} {artist_name}"
+            results = spotify.search(q=query, type="track", limit=1)
+            found_tracks = results.get("tracks", {}).get("items", [])
+            return found_tracks[0] if found_tracks else None
+
+        track = await loop.run_in_executor(None, _search_track)
+
+        if not track:
+            await status_msg.edit_text("❌ Track Not Found")
+            return
+
+        spotify_track_id = track.get("id")
+        if not spotify_track_id:
+            await status_msg.edit_text("❌ خطا در دریافت اطلاعات آهنگ.")
+            return
+
+        await status_msg.delete()
+    except Exception as exc:
+        logger.error("Failed to search for track %s by %s: %s", track_title, artist_name, exc)
+        with contextlib.suppress(Exception):
+            await status_msg.edit_text("❌ خطا در جستجوی آهنگ.")
+        return
+
+    task = asyncio.current_task()
+
+    try:
+        await _download_single_track(client, callback_query.message, user_id, spotify_track_id, task)
+    finally:
+        if task:
+            download_manager.unregister(user_id, task)
+
+
+async def _handle_show_artist_tracks(
+    client: Client, callback_query: CallbackQuery
+) -> None:
+    """Send a new message with clickable deep links for top tracks."""
+    from urllib.parse import quote
+
+    import config
+    from handlers.download import _artist_tracks_cache
+
+    user_id = callback_query.from_user.id
+    tracks = _artist_tracks_cache.get(user_id, [])
+
+    if not tracks:
+        await callback_query.answer("❌ لیست آهنگ‌ها یافت نشد.", show_alert=True)
+        return
+
+    bot_username = config.cfg.BOT_USERNAME
+    lines = []
+    for i, track in enumerate(tracks):
+        title = track.get("title", f"Track {i + 1}")
+        artist = track.get("artist", "Unknown")
+        key = f"{artist}_{title}".replace(" ", "_").lower()
+        encoded = quote(key, safe="")
+        url = f"https://t.me/{bot_username}?start={encoded}"
+        lines.append(f'{artist} - {title}')
+        lines.append(f'<a href="{url}">Download</a>')
+        lines.append('--------------------------')
+
+    text = "🎵Top 10 Tracks\n\n" + "\n".join(lines)
+    await client.send_message(
+        chat_id=user_id,
+        text=text,
+        parse_mode=enums.ParseMode.HTML,
+    )
+    await callback_query.answer()

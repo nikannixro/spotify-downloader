@@ -1,4 +1,4 @@
-"""Inline search handler — Spotify / Deezer inline query results."""
+"""Inline search handler — Spotify inline query results."""
 
 from __future__ import annotations
 
@@ -23,14 +23,14 @@ from strings import MAINTENANCE_INLINE, NOT_JOINED_INLINE
 
 logger = logging.getLogger(__name__)
 
+_deezer = DeezerClient()
+
 SEARCH_PREFIXES: dict[str, SearchType] = {
     "artist:": SearchType.ARTIST,
     "album:": SearchType.ALBUM,
     "playlist:": SearchType.PLAYLIST,
     "track:": SearchType.TRACK,
 }
-
-_deezer_client = DeezerClient()
 
 
 @Client.on_inline_query()
@@ -71,36 +71,47 @@ async def inline_search(client: Client, inline_query: InlineQuery) -> None:
         return
 
     try:
-        if search_type == SearchType.ARTIST:
-            data = await _deezer_client.search_artists(term, limit=15)
-            if not data:
-                await inline_query.answer([])
-                return
-            results = _build_inline_results(search_type, data)
-        else:
-            from plugins.spotdl import _ensure_spotdl_init
-            from spotdl.utils.spotify import SpotifyClient
+        from plugins.spotdl import _ensure_spotdl_init
+        from spotdl.utils.spotify import SpotifyClient
 
-            _ensure_spotdl_init()
-            spotify = SpotifyClient()
-            loop = asyncio.get_running_loop()
-            data = await loop.run_in_executor(
-                None, lambda: spotify.search(q=term, type=search_type.value, limit=10)
-            )
-            if not data:
-                await inline_query.answer([])
-                return
-            results = _build_inline_results(search_type, data)
+        _ensure_spotdl_init()
+        spotify = SpotifyClient()
+        loop = asyncio.get_running_loop()
+        data = await loop.run_in_executor(
+            None, lambda: spotify.search(q=term, type=search_type.value, limit=10)
+        )
+        if not data:
+            await inline_query.answer([])
+            return
     except Exception as exc:
         logger.error("Inline search error: %s", exc)
         await inline_query.answer([])
         return
 
+    followers_map: dict[str, int] = {}
+    if search_type == SearchType.ARTIST:
+        artist_items = data.get("artists", {}).get("items", [])
+        names = [item.get("name", "") for item in artist_items]
+        tasks = [_deezer.search_artists(n, limit=1) if n else asyncio.sleep(0) for n in names]
+        deezer_results = await asyncio.gather(*tasks, return_exceptions=True)
+        for name, result in zip(names, deezer_results):
+            if not name or isinstance(result, Exception):
+                continue
+            if result:
+                followers_map[name.lower()] = result[0].get("nb_fan", 0)
+
+    results = _build_inline_results(search_type, data, followers_map, user_id=user_id)
+
     valid_results = [r for r in results if r.thumb_url]
     await inline_query.answer(valid_results[:20], cache_time=300)
 
 
-def _build_inline_results(search_type: SearchType, data: Any) -> list[InlineQueryResultArticle]:
+def _build_inline_results(
+    search_type: SearchType,
+    data: Any,
+    followers_map: dict[str, int] | None = None,
+    user_id: int = 0,
+) -> list[InlineQueryResultArticle]:
     """Build InlineQueryResultArticle list from search data."""
     out: list[InlineQueryResultArticle] = []
     try:
@@ -125,36 +136,37 @@ def _build_inline_results(search_type: SearchType, data: Any) -> list[InlineQuer
                 )
 
         elif search_type == SearchType.ARTIST:
-            for item in data:
+            for item in data["artists"]["items"]:
                 name = item.get("name", "Unknown")
-                nb_album = item.get("nb_album", 0)
-                nb_fan = item.get("nb_fan", 0)
-                thumb = item.get("picture_medium") or item.get("picture")
-                link = item.get("link", "")
+                followers = (followers_map or {}).get(name.lower(), 0)
+                images = item.get("images", [])
+                thumb = images[0]["url"] if images else None
+                artist_id = item.get("id", "")
+                result_id = str(uuid.uuid4())
 
                 out.append(
                     InlineQueryResultArticle(
-                        id=str(uuid.uuid4()),
+                        id=result_id,
                         title=name,
-                        description=f"Album number: {nb_album}\nFan number: {nb_fan:,}",
+                        description=f"👤 Followers: {followers:,}",
                         thumb_url=thumb,
-                        input_message_content=InputTextMessageContent(link),
+                        input_message_content=InputTextMessageContent(
+                            f"https://open.spotify.com/artist/{artist_id}"
+                        ),
                     )
                 )
 
         elif search_type == SearchType.ALBUM:
             for item in data["albums"]["items"]:
                 artists = ", ".join(a["name"] for a in item["artists"])
-                release = item.get("release_date", "?")
-                year = release[:4] if release else "?"
                 total = item.get("total_tracks", "?")
                 images = item["images"]
                 thumb = images[0]["url"] if images else None
                 out.append(
                     InlineQueryResultArticle(
                         id=str(uuid.uuid4()),
-                        title=f"💿 {item['name']}",
-                        description=f"👤 {artists} | {year} | {total} tracks",
+                        title=item["name"],
+                        description=f"Tracks number: {total}\nArtist: {artists}",
                         thumb_url=thumb,
                         input_message_content=InputTextMessageContent(
                             item["external_urls"]["spotify"]
@@ -163,16 +175,19 @@ def _build_inline_results(search_type: SearchType, data: Any) -> list[InlineQuer
                 )
 
         elif search_type == SearchType.PLAYLIST:
-            for item in data["playlists"]["items"]:
-                owner = item["owner"]["display_name"]
-                total = item["tracks"]["total"]
-                images = item["images"]
+            for item in data.get("playlists", {}).get("items", []):
+                if not item:
+                    continue
+                owner = (item.get("owner") or {}).get("display_name") or "anonymous"
+                tracks_obj = item.get("tracks") or {}
+                total = tracks_obj.get("total", "?")
+                images = item.get("images") or []
                 thumb = images[0]["url"] if images else None
                 out.append(
                     InlineQueryResultArticle(
                         id=str(uuid.uuid4()),
-                        title=f"📁 {item['name']}",
-                        description=f"By: {owner} | {total} tracks",
+                        title=item["name"],
+                        description=f"Tracks number: {total}\nUser: {owner}",
                         thumb_url=thumb,
                         input_message_content=InputTextMessageContent(
                             item["external_urls"]["spotify"]

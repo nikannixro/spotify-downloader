@@ -143,6 +143,13 @@ def join_keyboard(channels: list[ChannelRecord]) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(kb)
 
 
+def artist_top_button(user_id: int) -> InlineKeyboardMarkup:
+    """Build a keyboard with a single button to show top tracks."""
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🎵 Top 10 Tracks", callback_data=f"show_artist_tracks:{user_id}")]
+    ])
+
+
 def back_reply_keyboard() -> ReplyKeyboardMarkup:
     """Build a simple reply keyboard with a back button."""
     return ReplyKeyboardMarkup(

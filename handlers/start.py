@@ -16,7 +16,6 @@ from strings import (
     DEFAULT_START_MESSAGE,
     MAINTENANCE,
     NO_ACTIVE_DL,
-    NOT_JOINED_ALERT,
 )
 from utils.keyboards import join_keyboard, main_keyboard
 
@@ -43,8 +42,8 @@ async def cmd_start(client: Client, message: Message) -> None:
     if not message.from_user:
         return
     user_id = message.from_user.id
+    db = get_db()
     if not is_admin(user_id):
-        db = get_db()
         if await db.get_setting("maintenance_mode") == "1":
             await message.reply_text(MAINTENANCE)
             return
@@ -62,11 +61,87 @@ async def cmd_start(client: Client, message: Message) -> None:
             await message.reply_text(msg, reply_markup=kb)
             return
 
+    # Deep link: /start artist_trackname → search and download track
+    if len(args) > 1 and args[1] != "verify":
+        track_key = args[1]
+        await _handle_track_deep_link(client, message, user_id, track_key)
+        return
+
     db = get_db()
     await db.add_user(user_id, message.from_user.username)
     text = await db.get_setting("start_message") or DEFAULT_START_MESSAGE
     await message.reply_text(text=text, reply_markup=main_keyboard(is_admin(user_id)))
     logger.info("User %d started the bot", user_id)
+
+
+async def _handle_track_deep_link(
+    client: Client, message: Message, user_id: int, track_key: str
+) -> None:
+    """Search and download a track from a deep link key (artistname_trackname)."""
+    import asyncio
+    import contextlib
+
+    from handlers.download import _download_single_track
+    from plugins.spotdl import _ensure_spotdl_init
+    from spotdl.utils.spotify import SpotifyClient
+    from strings import RATE_LIMITED
+
+    # Reconstruct search query: replace underscores with spaces
+    query = track_key.replace("_", " ")
+
+    status_msg = await message.reply_text("🔍 در حال جستجوی آهنگ...")
+
+    try:
+        _ensure_spotdl_init()
+        spotify = SpotifyClient()
+        loop = asyncio.get_running_loop()
+
+        def _search_track():
+            logger.info("Deep link search: q=%s", query)
+            results = spotify.search(q=query, type="track", limit=5)
+            items = results.get("tracks", {}).get("items", [])
+            return items[0] if items else None
+
+        track = await loop.run_in_executor(None, _search_track)
+
+        if not track:
+            logger.warning("Deep link track not found for query: %s", query)
+            await status_msg.edit_text("❌ Track Not Found")
+            return
+
+        track_id = track.get("id")
+        if not track_id:
+            await status_msg.edit_text("❌ خطا در دریافت اطلاعات آهنگ.")
+            return
+
+        await status_msg.delete()
+    except Exception as exc:
+        logger.error("Deep link search failed: %s", exc)
+        with contextlib.suppress(Exception):
+            await status_msg.edit_text("❌ خطا در جستجوی آهنگ.")
+        return
+
+    # Enforce membership
+    if not await enforce_membership(client, message):
+        return
+
+    # Rate limit
+    from config import is_admin
+    from services import get_rate_limiter
+
+    rate_limiter = get_rate_limiter()
+    if not is_admin(user_id) and await rate_limiter.is_limited(user_id):
+        window = await rate_limiter.window_seconds()
+        await message.reply_text(RATE_LIMITED.format(window=window))
+        return
+
+    download_manager.clear_cancel_flag(user_id)
+    task = asyncio.current_task()
+    try:
+        await _download_single_track(client, message, user_id, track_id, task)
+    finally:
+        if task:
+            download_manager.unregister(user_id, task)
 
 
 async def verify_join_callback(client: Client, callback_query: CallbackQuery) -> None:

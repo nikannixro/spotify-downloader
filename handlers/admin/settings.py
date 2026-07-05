@@ -12,7 +12,7 @@ from models import AdminState
 from services import get_db, get_rate_limiter
 from utils.keyboards import settings_keyboard
 
-from .panel import _check_back, _safe_edit, admin_main_keyboard
+from .panel import _check_back, _safe_edit
 
 logger = logging.getLogger(__name__)
 

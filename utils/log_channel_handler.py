@@ -1,4 +1,4 @@
-"""Custom logging handler that forwards ERROR/WARNING logs to a Telegram channel."""
+"""Custom logging handler that forwards all logs to a Telegram channel."""
 
 from __future__ import annotations
 
@@ -11,10 +11,10 @@ if TYPE_CHECKING:
 
 
 class TelegramLogHandler(logging.Handler):
-    """Asynchronous logging handler that queues WARNING/ERROR messages for delivery to a Telegram channel."""
+    """Asynchronous logging handler that queues all log messages for delivery to a Telegram channel."""
 
     def __init__(self, client: Client | None = None):
-        super().__init__(level=logging.WARNING)
+        super().__init__(level=logging.DEBUG)
         self._client = client
         self._channel_id: int | None = None
         self._enabled = False
@@ -49,28 +49,15 @@ class TelegramLogHandler(logging.Handler):
 
         if not self._enabled:
             try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    asyncio.ensure_future(self._update_settings())
-                else:
-                    loop.run_until_complete(self._update_settings())
-            except Exception:
+                loop = asyncio.get_running_loop()
+                asyncio.ensure_future(self._update_settings())
+            except RuntimeError:
                 return
 
         if not self._enabled or not self._channel_id:
             return
 
-        # Only send WARNING and ERROR logs
-        if record.levelno < logging.WARNING:
-            return
-
         msg = self.format(record)
-
-        # Add emoji based on level
-        if record.levelno >= logging.ERROR:
-            msg = f"❌ {msg}"
-        elif record.levelno >= logging.WARNING:
-            msg = f"⚠️ {msg}"
 
         # Skip if message is too long
         if len(msg) > 4000:
@@ -78,17 +65,11 @@ class TelegramLogHandler(logging.Handler):
 
         # Schedule async send
         try:
-            try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
+            loop = asyncio.get_running_loop()
             if loop.is_running():
                 asyncio.ensure_future(self._send_message(msg))
-            else:
-                loop.run_until_complete(self._send_message(msg))
-        except Exception:
-            pass  # Silently fail to avoid infinite recursion
+        except RuntimeError:
+            pass  # No running loop (e.g., during shutdown)
 
     async def _send_message(self, msg: str) -> None:
         """Send message to the configured channel."""
