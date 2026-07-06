@@ -6,7 +6,7 @@ services:
     container_name: Spotify-Downloader
     restart: unless-stopped
     env_file:
-      - .env
+      - config.env
     volumes:
       - bot_data:/app/data
       - bot_cache:/app/cache
