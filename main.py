@@ -123,6 +123,13 @@ def validate_environment() -> None:
         log.error("invalid.admin_id", value=cfg.ADMIN_ID)
         sys.exit(1)
 
+    if cfg.ADMIN_IDS:
+        for part in cfg.ADMIN_IDS.split(","):
+            part = part.strip()
+            if part and not part.isdigit():
+                log.error("invalid.admin_ids_entry", value=part)
+                sys.exit(1)
+
     db_dir = os.path.dirname(cfg.DB_PATH)
     if db_dir and not os.access(db_dir, os.W_OK):
         try:
