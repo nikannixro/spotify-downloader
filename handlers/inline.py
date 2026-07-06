@@ -89,6 +89,7 @@ async def inline_search(client: Client, inline_query: InlineQuery) -> None:
         return
 
     followers_map: dict[str, int] = {}
+    playlist_track_counts: dict[str, int | None] = {}
     if search_type == SearchType.ARTIST:
         artist_items = data.get("artists", {}).get("items", [])
         names = [item.get("name", "") for item in artist_items]
@@ -100,7 +101,42 @@ async def inline_search(client: Client, inline_query: InlineQuery) -> None:
             if result:
                 followers_map[name.lower()] = result[0].get("nb_fan", 0)
 
-    results = _build_inline_results(search_type, data, followers_map, user_id=user_id)
+    if search_type == SearchType.PLAYLIST:
+        items = data.get("playlists", {}).get("items", [])
+        ids_to_fetch = []
+        for item in items:
+            if not item:
+                continue
+            pid = item.get("id")
+            tracks_obj = item.get("tracks") or {}
+            if isinstance(tracks_obj, dict) and tracks_obj.get("total") is not None:
+                playlist_track_counts[pid] = tracks_obj["total"]
+            elif pid:
+                ids_to_fetch.append(pid)
+
+        if ids_to_fetch:
+            def _fetch_playlist_count(pid: str) -> tuple[str, int | None]:
+                try:
+                    pl = spotify.playlist(pid, fields="tracks.total")
+                    return pid, pl.get("tracks", {}).get("total")
+                except Exception:
+                    return pid, None
+
+            fetch_tasks = [
+                loop.run_in_executor(None, _fetch_playlist_count, pid)
+                for pid in ids_to_fetch
+            ]
+            fetch_results = await asyncio.gather(*fetch_tasks, return_exceptions=True)
+            for r in fetch_results:
+                if isinstance(r, Exception):
+                    continue
+                pid, count = r
+                playlist_track_counts[pid] = count
+
+    results = _build_inline_results(
+        search_type, data, followers_map,
+        user_id=user_id, playlist_track_counts=playlist_track_counts,
+    )
 
     valid_results = [r for r in results if r.thumb_url]
     await inline_query.answer(valid_results[:20], cache_time=300)
@@ -111,6 +147,7 @@ def _build_inline_results(
     data: Any,
     followers_map: dict[str, int] | None = None,
     user_id: int = 0,
+    playlist_track_counts: dict[str, int | None] | None = None,
 ) -> list[InlineQueryResultArticle]:
     """Build InlineQueryResultArticle list from search data."""
     out: list[InlineQueryResultArticle] = []
@@ -178,9 +215,21 @@ def _build_inline_results(
             for item in data.get("playlists", {}).get("items", []):
                 if not item:
                     continue
-                owner = (item.get("owner") or {}).get("display_name") or "anonymous"
+                owner_obj = item.get("owner") or {}
+                if isinstance(owner_obj, dict):
+                    owner = owner_obj.get("display_name") or "anonymous"
+                else:
+                    owner = "anonymous"
                 tracks_obj = item.get("tracks") or {}
-                total = tracks_obj.get("total", "?")
+                total = None
+                if isinstance(tracks_obj, dict):
+                    total = tracks_obj.get("total")
+                if total is None:
+                    pid = item.get("id")
+                    if pid and playlist_track_counts:
+                        total = playlist_track_counts.get(pid)
+                    if total is None:
+                        total = "?"
                 images = item.get("images") or []
                 thumb = images[0]["url"] if images else None
                 out.append(
@@ -194,6 +243,6 @@ def _build_inline_results(
                         ),
                     )
                 )
-    except (KeyError, IndexError, TypeError) as exc:
+    except (KeyError, IndexError, TypeError, AttributeError) as exc:
         logger.warning("Result parse error: %s", exc)
     return out

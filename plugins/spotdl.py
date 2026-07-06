@@ -35,6 +35,18 @@ def _ensure_spotdl_init() -> None:
         headless=True,
         use_official_api=True,
     )
+
+    _client = SpotifyClient()
+    _orig_album = _client.album
+
+    def _safe_album(*args, **kwargs):
+        result = _orig_album(*args, **kwargs)
+        if isinstance(result, dict) and "label" not in result:
+            result["label"] = "Unknown"
+        return result
+
+    _client.album = _safe_album
+
     logging.getLogger("spotdl").setLevel(logging.DEBUG)
     _spotdl_initialized = True
     logger.info("spotDL SpotifyClient initialized")
