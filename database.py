@@ -128,34 +128,19 @@ class Database:
         await conn.commit()
 
     async def get_users_count(self) -> int:
-        from config import get_admin_ids
-        admin_ids = get_admin_ids()
+        admin_id = int(cfg.ADMIN_ID)
         conn = await self._get_conn()
-        if admin_ids:
-            placeholders = ",".join("?" for _ in admin_ids)
-            cursor = await conn.execute(
-                f"SELECT COUNT(*) FROM users WHERE user_id NOT IN ({placeholders})",
-                admin_ids,
-            )
-        else:
-            cursor = await conn.execute("SELECT COUNT(*) FROM users")
+        cursor = await conn.execute("SELECT COUNT(*) FROM users WHERE user_id!=?", (admin_id,))
         row = await cursor.fetchone()
         return row[0]
 
     async def get_all_user_ids(self) -> list[int]:
-        from config import get_admin_ids
-        admin_ids = get_admin_ids()
+        admin_id = int(cfg.ADMIN_ID)
         conn = await self._get_conn()
-        if admin_ids:
-            placeholders = ",".join("?" for _ in admin_ids)
-            cursor = await conn.execute(
-                f"SELECT user_id FROM users WHERE is_banned=0 AND user_id NOT IN ({placeholders})",
-                admin_ids,
-            )
-        else:
-            cursor = await conn.execute(
-                "SELECT user_id FROM users WHERE is_banned=0"
-            )
+        cursor = await conn.execute(
+            "SELECT user_id FROM users WHERE is_banned=0 AND user_id!=?",
+            (admin_id,),
+        )
         rows = await cursor.fetchall()
         return [row[0] for row in rows]
 

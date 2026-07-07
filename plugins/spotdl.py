@@ -7,6 +7,7 @@ import functools
 import logging
 import os
 import shutil
+import time
 from pathlib import Path
 import tempfile
 from typing import Any
@@ -206,10 +207,24 @@ def _run_spotdl_fetch_song(url: str):
         return None
 
 
+def _mb_log(level: str, msg: str, **ctx: Any) -> None:
+    """Structured MusicBrainz log with context fields."""
+    extras = " ".join(f"{k}={v!r}" for k, v in ctx.items())
+    getattr(logger, level)(f"[MB] {msg} {extras}".strip())
+
+
 async def _musicbrainz_lookup(isrc: str | None) -> dict[str, str | None]:
-    """Look up composer, publisher, language, genres via MusicBrainz ISRC."""
-    result = {"composer": None, "writer": None, "publisher": None, "label": None, "language": None, "genres": []}
+    """Look up composer, publisher, language via MusicBrainz ISRC."""
+    result: dict[str, str | None] = {
+        "composer": None,
+        "writer": None,
+        "publisher": None,
+        "label": None,
+        "language": None,
+    }
+
     if not isrc:
+        _mb_log("info", "No ISRC provided, skipping MusicBrainz lookup")
         return result
 
     try:
@@ -218,57 +233,115 @@ async def _musicbrainz_lookup(isrc: str | None) -> dict[str, str | None]:
         musicbrainzngs.set_useragent("SpotifyDownloaderBot", "2.0", "")
 
         loop = asyncio.get_running_loop()
+
+        _mb_log("info", "ISRC lookup started", isrc=isrc, includes=["artists", "releases"])
+        t0 = time.monotonic()
         data = await loop.run_in_executor(
             None, functools.partial(musicbrainzngs.get_recordings_by_isrc, isrc, includes=["artists", "releases"])
         )
+        elapsed = time.monotonic() - t0
+        _mb_log("info", "ISRC lookup response", isrc=isrc, elapsed=f"{elapsed:.3f}s", response_keys=list(data.keys()))
 
-        recordings = data.get("isrc", {}).get("recording-list", [])
+        isrc_data = data.get("isrc", {})
+        recordings = isrc_data.get("recording-list", [])
+        _mb_log("info", "Recording count", count=len(recordings), isrc=isrc)
+
         if not recordings:
-            logger.debug("MusicBrainz: no recordings for ISRC %s", isrc)
+            _mb_log("info", "No recordings found for ISRC", isrc=isrc)
             return result
 
         recording = recordings[0]
+        rec_id = recording.get("id", "")
+        rec_title = recording.get("title", "")
+        _mb_log("info", "First recording", id=rec_id, title=rec_title)
 
-        for credit in recording.get("artist-credit", recording.get("artist-credit-list", [])):
+        artist_credits = recording.get("artist-credit", recording.get("artist-credit-list", []))
+        _mb_log("debug", "Artist credits", count=len(artist_credits))
+
+        for i, credit in enumerate(artist_credits):
             artist = credit.get("artist", {})
             artist_name = artist.get("name", "")
+            artist_mbid = artist.get("id", "")
+            _mb_log("debug", "Artist credit", index=i, name=artist_name, mbid=artist_mbid)
             if artist_name and not result["composer"]:
                 result["composer"] = artist_name
+                _mb_log("info", "Composer assigned from artist credit", composer=artist_name)
 
         releases = recording.get("release-list", [])
+        _mb_log("debug", "Releases found", count=len(releases))
+
         if releases:
             release = releases[0]
+            release_id = release.get("id", "")
+            release_title = release.get("title", "")
+            _mb_log("debug", "First release", id=release_id, title=release_title)
 
-            label_info_list = release.get("label-info-list")
+            label_info_list = release.get("label-info-list", [])
+            _mb_log("debug", "Label info list", count=len(label_info_list))
+
             if label_info_list:
                 label_info = label_info_list[0]
                 label = label_info.get("label", {})
                 label_name = label.get("name", "")
+                label_mbid = label.get("id", "")
+                _mb_log("debug", "Label info", name=label_name, mbid=label_mbid)
                 if label_name:
                     result["label"] = label_name
                     result["publisher"] = label_name
+                    _mb_log("info", "Publisher assigned from label", publisher=label_name, label=label_name)
 
             text_rep = release.get("text-representation", {})
             lang = text_rep.get("language")
+            _mb_log("debug", "Text representation", text_rep=text_rep, language=lang)
             if lang:
                 result["language"] = lang
+                _mb_log("info", "Language extracted", language=lang)
+            else:
+                _mb_log("debug", "No language in text-representation")
 
-        recording_id = recording.get("id")
-        if recording_id:
+        if rec_id:
             try:
-                rec_data = await loop.run_in_executor(
-                    None, functools.partial(musicbrainzngs.get_recording_by_id, recording_id, includes=["tags"])
+                _mb_log("info", "Fetching recording relationships", recording_id=rec_id, includes=["artist-rels"])
+                t1 = time.monotonic()
+                rec_rels = await loop.run_in_executor(
+                    None,
+                    functools.partial(
+                        musicbrainzngs.get_recording_by_id,
+                        rec_id,
+                        includes=["artist-rels"],
+                    ),
                 )
-                tags = rec_data.get("recording", {}).get("tag-list", [])
-                genres = [t["name"] for t in tags if t.get("count", 0) >= 1]
-                if genres:
-                    result["genres"] = genres[:5]
-            except Exception:
-                pass
+                elapsed_rels = time.monotonic() - t1
+                _mb_log("info", "Relationship response", recording_id=rec_id, elapsed=f"{elapsed_rels:.3f}s", response_keys=list(rec_rels.keys()))
 
-        logger.info("MusicBrainz ISRC %s -> %s", isrc, result)
+                recording_data = rec_rels.get("recording", {})
+                relations = recording_data.get("relation-list", [])
+                _mb_log("debug", "Relation list", count=len(relations), recording_id=rec_id)
+
+                for rel in relations:
+                    rel_type = rel.get("type", "")
+                    target = rel.get("artist", {})
+                    target_name = target.get("name", "")
+                    target_mbid = target.get("id", "")
+                    _mb_log("debug", "Relation found", type=rel_type, artist=target_name, mbid=target_mbid)
+
+                    if rel_type in ("composer", "arranger", "writer", "lyricist"):
+                        if not result["composer"]:
+                            result["composer"] = target_name
+                            _mb_log("info", "Composer from relationship", composer=target_name, relation=rel_type)
+                        if not result["writer"] and rel_type in ("writer", "lyricist"):
+                            result["writer"] = target_name
+                            _mb_log("info", "Writer from relationship", writer=target_name, relation=rel_type)
+
+            except Exception as exc:
+                _mb_log("warning", "Relationship fetch failed", recording_id=rec_id, error=str(exc), error_type=type(exc).__name__)
+                _mb_log("debug", "Relationship fetch traceback", exc_info=True)
+
+        _mb_log("info", "MusicBrainz result", isrc=isrc, composer=result["composer"], writer=result["writer"], publisher=result["publisher"], label=result["label"], language=result["language"])
+
     except Exception as exc:
-        logger.warning("MusicBrainz lookup failed for ISRC %s: %s", isrc, exc)
+        _mb_log("error", "MusicBrainz lookup failed", isrc=isrc, error=str(exc), error_type=type(exc).__name__)
+        _mb_log("debug", "MusicBrainz lookup traceback", exc_info=True)
 
     return result
 
@@ -278,23 +351,37 @@ async def _deezer_fallback(isrc: str | None, artist: str, title: str) -> dict[st
     result: dict[str, Any] = {"genres": [], "publisher": None}
     loop = asyncio.get_running_loop()
 
+    _mb_log("info", "Deezer fallback started", isrc=isrc, artist=artist, title=title)
+
     try:
         track_data = None
         if isrc:
+            _mb_log("debug", "Deezer ISRC search", isrc=isrc)
             track_data = await loop.run_in_executor(
                 None, _deezer_fetch_by_isrc, isrc
             )
+            _mb_log("info", "Deezer ISRC result", isrc=isrc, found=track_data is not None)
 
         if not track_data:
+            _mb_log("debug", "Deezer artist/title search", artist=artist, title=title)
             track_data = await loop.run_in_executor(
                 None, _deezer_search_track, artist, title
             )
+            _mb_log("info", "Deezer search result", artist=artist, title=title, found=track_data is not None)
 
         if not track_data:
+            _mb_log("info", "Deezer: no track found, returning empty")
             return result
 
+        track_id = track_data.get("id")
+        track_title = track_data.get("title", "")
+        _mb_log("debug", "Deezer track matched", id=track_id, title=track_title)
+
         album_id = track_data.get("album", {}).get("id")
+        _mb_log("debug", "Deezer album ID", album_id=album_id)
+
         if album_id:
+            _mb_log("debug", "Deezer album fetch", album_id=album_id)
             album_data = await loop.run_in_executor(
                 None, _deezer_fetch_album, album_id
             )
@@ -302,13 +389,19 @@ async def _deezer_fallback(isrc: str | None, artist: str, title: str) -> dict[st
                 genres = album_data.get("genres", {}).get("data", [])
                 if genres:
                     result["genres"] = [g.get("name") for g in genres if g.get("name")]
+                    _mb_log("info", "Deezer genres extracted", genres=result["genres"])
+
                 label = album_data.get("label")
                 if label:
                     result["publisher"] = label
+                    _mb_log("info", "Deezer publisher extracted", publisher=label)
+            else:
+                _mb_log("debug", "Deezer album fetch returned None", album_id=album_id)
 
-        logger.info("Deezer fallback: genres=%s, publisher=%s", result["genres"], result["publisher"])
+        _mb_log("info", "Deezer fallback complete", genres=result["genres"], publisher=result["publisher"])
     except Exception as exc:
-        logger.warning("Deezer fallback failed: %s", exc)
+        _mb_log("warning", "Deezer fallback failed", error=str(exc), error_type=type(exc).__name__)
+        _mb_log("debug", "Deezer fallback traceback", exc_info=True)
 
     return result
 
@@ -357,34 +450,71 @@ def _deezer_fetch_album(album_id: int) -> dict | None:
 
 async def _enrich_metadata(meta: TrackMetadata) -> None:
     """Enrich metadata with MusicBrainz and Deezer data."""
+    _mb_log("info", "Enrichment started", isrc=meta.isrc, track=meta.name, artist=meta.artists)
+
     mb_data = await _musicbrainz_lookup(meta.isrc)
+
     if mb_data.get("composer") and not meta.composer:
         meta.composer = mb_data["composer"]
+        _mb_log("info", "Composer from MusicBrainz", composer=meta.composer)
+    elif not meta.composer:
+        _mb_log("info", "No composer from MusicBrainz")
+
+    if mb_data.get("writer"):
+        _mb_log("info", "Writer from MusicBrainz", writer=mb_data["writer"])
+
     if mb_data.get("language"):
         meta.language = mb_data["language"]
+        _mb_log("info", "Language from MusicBrainz", language=meta.language)
+    else:
+        _mb_log("info", "No language from MusicBrainz")
+
+    if mb_data.get("publisher"):
+        _mb_log("info", "Publisher from MusicBrainz", publisher=mb_data["publisher"])
+    else:
+        _mb_log("info", "No publisher from MusicBrainz")
 
     dz_data = None
-    if not meta.genres or not meta.publisher:
-        if (not meta.genres and not mb_data.get("genres")) or (not meta.publisher and not mb_data.get("publisher")):
-            dz_data = await _deezer_fallback(meta.isrc, meta.artists, meta.name)
+    needs_deezer = (not meta.genres) or (not meta.publisher and not mb_data.get("publisher"))
+    if needs_deezer:
+        _mb_log("info", "Triggering Deezer fallback", reason=f"genres={'missing' if not meta.genres else 'present'}, publisher_mb={'missing' if not mb_data.get('publisher') else 'present'}")
+        dz_data = await _deezer_fallback(meta.isrc, meta.artists, meta.name)
+    else:
+        _mb_log("info", "Deezer fallback skipped", reason="all fields available from Spotify/MusicBrainz")
 
     if not meta.genres:
-        if mb_data.get("genres"):
-            meta.genres = mb_data["genres"]
-        elif dz_data and dz_data.get("genres"):
+        if dz_data and dz_data.get("genres"):
             meta.genres = dz_data["genres"]
+            _mb_log("info", "Genres from Deezer", genres=meta.genres)
+        else:
+            _mb_log("info", "No genres available from any source")
+    else:
+        _mb_log("info", "Genres from Spotify (existing)", genres=meta.genres)
 
     if not meta.publisher:
         if mb_data.get("publisher"):
             meta.publisher = mb_data["publisher"]
+            _mb_log("info", "Publisher from MusicBrainz", publisher=meta.publisher)
         elif dz_data and dz_data.get("publisher"):
             meta.publisher = dz_data["publisher"]
+            _mb_log("info", "Publisher from Deezer", publisher=meta.publisher)
+        else:
+            _mb_log("info", "No publisher available from any source")
+    else:
+        _mb_log("info", "Publisher from Spotify (existing)", publisher=meta.publisher)
 
     if mb_data.get("label") and not meta.label:
         meta.label = mb_data["label"]
+        _mb_log("info", "Label from MusicBrainz", label=meta.label)
 
-    logger.debug("Enriched metadata: publisher=%s, genres=%s, language=%s, composer=%s",
-        meta.publisher, meta.genres, meta.language, meta.composer)
+    _mb_log("info", "Enrichment complete",
+        composer_source="musicbrainz" if mb_data.get("composer") else "none",
+        writer_source="musicbrainz" if mb_data.get("writer") else "none",
+        language_source="musicbrainz" if mb_data.get("language") else "none",
+        publisher_source="musicbrainz" if mb_data.get("publisher") else ("deezer" if dz_data and dz_data.get("publisher") else ("spotify" if meta.publisher else "none")),
+        genres_source="spotify" if meta.genres and not (dz_data and dz_data.get("genres")) else ("deezer" if dz_data and dz_data.get("genres") else "none"),
+        label_source="musicbrainz" if mb_data.get("label") else "none",
+    )
 
 
 class SpotDLBackend:

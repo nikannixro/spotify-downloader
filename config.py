@@ -45,25 +45,10 @@ class _Config:
 
 cfg = _Config()
 
-_admin_ids_cache: set[str] | None = None
-
-
-def _get_admin_ids() -> set[str]:
-    """Return the full set of configured admin IDs (strings). Cached after first call."""
-    global _admin_ids_cache
-    if _admin_ids_cache is None:
-        if cfg.ADMIN_IDS:
-            _admin_ids_cache = {s.strip() for s in cfg.ADMIN_IDS.split(",") if s.strip()}
-        else:
-            _admin_ids_cache = {cfg.ADMIN_ID.strip()} if cfg.ADMIN_ID.strip() else set()
-    return _admin_ids_cache
-
 
 def is_admin(uid: int) -> bool:
     """Return True if *uid* matches any configured admin ID."""
-    return str(uid) in _get_admin_ids()
-
-
-def get_admin_ids() -> list[int]:
-    """Return all configured admin IDs as integers."""
-    return [int(x) for x in _get_admin_ids() if x.isdigit()]
+    if cfg.ADMIN_IDS:
+        admins = {s.strip() for s in cfg.ADMIN_IDS.split(",") if s.strip()}
+        return str(uid) in admins
+    return str(uid) == cfg.ADMIN_ID
