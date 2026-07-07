@@ -1,1 +1,0 @@
-adding a install.sh: opencode -s ses_0c64c3452ffePGuYUD0nz9u4In
