@@ -22,6 +22,9 @@ class TelegramLogHandler(logging.Handler):
         self._loaded = False
         # Guards against scheduling multiple concurrent reloads from emit().
         self._reload_pending = False
+        # One-shot flag so a persistent send failure is logged to stderr once
+        # (visible in `docker compose logs`) without spamming on every record.
+        self._send_failed = False
 
     def set_client(self, client: Client) -> None:
         """Set the Pyrogram client instance."""
@@ -62,7 +65,47 @@ class TelegramLogHandler(logging.Handler):
             self._enabled = False
 
         self._loaded = True
+        # Re-arm the one-shot send-failure warning so a settings change gets
+        # a fresh chance to report problems.
+        self._send_failed = False
         return True
+
+    async def ensure_resolved(self) -> None:
+        """Re-resolve the log channel by username so its access_hash is cached
+        in the Pyrogram session.
+
+        Required after a fresh start (e.g. Docker container recreation) where
+        the session no longer holds the channel's access_hash. Pyrogram needs
+        the access_hash to send to a channel by its numeric marked ID; without
+        it, `send_message(chat_id=<marked_id>)` raises PeerIdInvalidError.
+
+        The channel username is stored at configuration time
+        (see handlers/admin/log_channel.py). If absent (e.g. private channel
+        or older config), this is a no-op and delivery relies on the persisted
+        session instead.
+        """
+        if not self._client:
+            return
+        from services import get_db
+
+        try:
+            db = get_db()
+            username = await db.get_setting("log_channel_username", "")
+        except Exception:
+            return
+
+        if not username:
+            return
+
+        try:
+            await self._client.get_chat(f"@{username}")
+        except Exception as exc:
+            import sys
+            print(
+                f"[log_channel_handler] could not re-resolve channel "
+                f"@{username}: {exc}",
+                file=sys.stderr,
+            )
 
     def _schedule_reload(self) -> None:
         """Schedule an async reload from within sync emit() if one isn't pending."""
@@ -119,10 +162,21 @@ class TelegramLogHandler(logging.Handler):
                     text=msg,
                     disable_web_page_preview=True,
                 )
-        except Exception:
-            # Silently fail to avoid infinite recursion (a failed send would
-            # itself log, re-triggering this handler).
-            pass
+                self._send_failed = False
+        except Exception as exc:
+            # Do NOT use stdlib logging here — a failed send logged via stdlib
+            # would re-trigger this handler and loop. print() to stderr is
+            # captured by Docker's json-file log driver (visible in
+            # `docker compose logs`) and cannot recurse. Suppressed after the
+            # first failure to avoid spam; re-armed on success or reload().
+            if not self._send_failed:
+                self._send_failed = True
+                import sys
+                print(
+                    f"[log_channel_handler] send failed "
+                    f"(further failures suppressed): {exc}",
+                    file=sys.stderr,
+                )
 
 
 # ── Module-level singleton ──────────────────────────────────────────────────

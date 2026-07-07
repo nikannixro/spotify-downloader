@@ -8,7 +8,7 @@
 #   3. create config.env from example.env and prompt for required secrets
 #   4. docker compose up -d --build
 #
-# Usage:  ./install.sh
+# Usage:  sudo ./install.sh
 #
 # Re-runs are safe: existing clones are pulled, existing .env secrets
 # are preserved (only empty/placeholder values are re-prompted).
@@ -65,14 +65,13 @@ trap 'die "Install failed at line $LINENO."' ERR
 preflight() {
     log "Preflight checks"
 
-    [[ "$(id -u)" -eq 0 ]] && die "Run this script as a non-root user with sudo access, not as root."
-
-    if ! command -v sudo >/dev/null 2>&1; then
-        die "sudo is required but not found."
+    if [[ "$(id -u)" -ne 0 ]]; then
+        die "This installer must be run as root. Re-run with:
+  sudo bash <(curl -Ls https://raw.githubusercontent.com/nikannixro/Spotify-Downloader/main/install.sh)
+  — or —
+  sudo bash install.sh"
     fi
-
-    # Validate sudo access up front (may prompt for password).
-    sudo -v || die "sudo access is required."
+    ok "Running as root."
 
     if [[ -f /etc/os-release ]]; then
         # shellcheck disable=SC1091
@@ -99,12 +98,12 @@ of your keyboard.
 
 Run it one of these ways instead:
 
-  bash <(curl -Ls https://raw.githubusercontent.com/nikannixro/Spotify-Downloader/main/install.sh)
+  sudo bash <(curl -Ls https://raw.githubusercontent.com/nikannixro/Spotify-Downloader/main/install.sh)
 
 or download then run:
 
   curl -Ls -o install.sh https://raw.githubusercontent.com/nikannixro/Spotify-Downloader/main/install.sh
-  bash install.sh
+  sudo bash install.sh
 EOF
         exit 1
     fi
@@ -113,24 +112,27 @@ EOF
 # ── System dependencies ──────────────────────────────────────────────────────
 install_system_deps() {
     log "Updating package index and upgrading system (this may take a while)..."
-    sudo apt update && sudo apt upgrade -y
+    apt update && apt upgrade -y
 
     log "Installing core dependencies: python3-pip, python-is-python3, git, ffmpeg"
-    sudo apt install -y python3-pip python-is-python3 git ffmpeg
+    apt install -y python3-pip python-is-python3 git ffmpeg
 
     log "Installing Docker (docker.io + docker-compose-plugin)"
-    sudo apt install -y docker.io docker-compose-plugin
+    apt install -y docker.io docker-compose-plugin
 
-    # Ensure the current user can use Docker without sudo.
-    if ! id -nG "$USER" | grep -qw docker; then
-        log "Adding user '$USER' to the 'docker' group..."
-        sudo usermod -aG docker "$USER"
-        warn "You were added to the 'docker' group. You may need to log out and back in"
-        warn "(or run 'newgrp docker') before Docker works without sudo."
-        DOCKER_GROUP_ADDED=1
-    else
-        ok "User '$USER' already in 'docker' group."
+    # Ensure the invoking user can use Docker without sudo.
+    local target_user="${SUDO_USER:-$USER}"
+    if [[ -z "$target_user" || "$target_user" == "root" ]]; then
+        warn "No non-root invoking user detected (logged in as root directly). Skipping docker group setup."
         DOCKER_GROUP_ADDED=0
+    elif id -nG "$target_user" | grep -qw docker; then
+        ok "User '$target_user' already in 'docker' group."
+        DOCKER_GROUP_ADDED=0
+    else
+        log "Adding user '$target_user' to the 'docker' group..."
+        usermod -aG docker "$target_user"
+        warn "User '$target_user' added to the 'docker' group — they may need to log out/in or run 'newgrp docker'."
+        DOCKER_GROUP_ADDED=1
     fi
     export DOCKER_GROUP_ADDED
 }
@@ -278,14 +280,7 @@ configure_env() {
 # ── Docker launch ────────────────────────────────────────────────────────────
 docker_up() {
     log "Building image and starting container (docker compose up -d --build)..."
-
-    # If docker group was just added and current shell can't see it, fall back to sudo.
-    if ! docker ps >/dev/null 2>&1; then
-        warn "Docker daemon not accessible as current user; retrying with sudo."
-        sudo docker compose up -d --build
-    else
-        docker compose up -d --build
-    fi
+    docker compose up -d --build
     ok "Container started."
 }
 
@@ -295,11 +290,7 @@ print_summary() {
     printf '%s━━━ Installation Complete ━━━%s\n' "${C_GREEN}" "${C_RESET}"
     echo
     log "Container status:"
-    if docker ps >/dev/null 2>&1; then
-        docker compose ps || true
-    else
-        sudo docker compose ps || true
-    fi
+    docker compose ps || true
     echo
     printf '%sLogs:%s        docker compose logs -f\n'   "${C_BOLD}" "${C_RESET}"
     printf '%sStop:%s        docker compose down\n'      "${C_BOLD}" "${C_RESET}"

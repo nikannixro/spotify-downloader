@@ -160,6 +160,11 @@ async def on_startup(app: Client) -> None:
     # configured Telegram channel immediately after startup (without requiring
     # an admin to re-configure it via the panel).
     await _log_channel_handler.reload()
+    # Re-resolve the log channel by username so its access_hash is cached in
+    # the (possibly fresh) Pyrogram session. Without this, send_message to the
+    # stored numeric channel ID fails with PeerIdInvalidError after a container
+    # recreation that wiped the session.
+    await _log_channel_handler.ensure_resolved()
 
     cache = get_cache()
     removed = await cache.cleanup()
@@ -233,13 +238,16 @@ def main() -> None:
     import pyrogram.session.session as _sess
     _sess.Session.invoke.__defaults__ = (10, 20, 10)
 
-    # Create Pyrogram client — handlers loaded manually in on_startup
+    # Create Pyrogram client — handlers loaded manually in on_startup.
+    # workdir="data" places the session file inside the persisted bot_data
+    # volume (/app/data), so the Pyrogram session (and cached peer
+    # access_hashes, e.g. the log channel's) survives container recreation.
     app = Client(
         "spotify_bot",
         api_id=cfg.API_ID,
         api_hash=cfg.API_HASH,
         bot_token=cfg.BOT_TOKEN,
-        workdir=".",
+        workdir="data",
         parse_mode=enums.ParseMode.MARKDOWN,
     )
 

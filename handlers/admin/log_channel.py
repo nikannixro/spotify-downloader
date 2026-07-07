@@ -128,10 +128,13 @@ async def h_log_channel_handler(client: Client, message: Message) -> int:
             )
             return AdminState.WAIT_LOG_CHANNEL
 
-        # Save channel ID
+        # Save channel ID and username. The username is used by
+        # TelegramLogHandler.ensure_resolved() at startup to re-cache the
+        # channel's access_hash in the Pyrogram session after a restart.
         db = get_db()
         await db.set_setting("log_channel_id", str(chat.id))
         await db.set_setting("log_channel_enabled", "1")
+        await db.set_setting("log_channel_username", chat.username or "")
         await get_log_channel_handler().reload()
 
         channel_username = f"@{chat.username}" if chat.username else str(chat.id)

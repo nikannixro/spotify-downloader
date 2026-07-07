@@ -84,10 +84,10 @@ The bot uses [spotDL](https://github.com/spotDL/spotify-downloader) as the downl
 > **One-line installer** (Debian/Ubuntu) — clones, installs system deps + Docker, prompts for the required secrets, and starts the container:
 >
 > ```bash
-> bash <(curl -Ls https://raw.githubusercontent.com/nikannixro/Spotify-Downloader/main/install.sh)
+> sudo bash <(curl -Ls https://raw.githubusercontent.com/nikannixro/Spotify-Downloader/main/install.sh)
 > ```
 >
-> Interactive — run it from a terminal. Do **not** use `curl ... | bash` (it breaks the prompts).
+> Must be run as root. Do **not** use `curl ... | bash` (it breaks the prompts).
 
 Prefer the manual path? Four steps:
 
