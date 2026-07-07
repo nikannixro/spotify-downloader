@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# install.sh — Quick Start installer for Spotify-Downloader
+# install.sh — Installer for Spotify-Downloader
 #
 # Sets up the project end-to-end on Debian/Ubuntu:
 #   1. apt update / upgrade / install system deps (incl. Docker)
@@ -117,8 +117,23 @@ install_system_deps() {
     log "Installing core dependencies: python3-pip, python-is-python3, git, ffmpeg"
     apt install -y python3-pip python-is-python3 git ffmpeg
 
-    log "Installing Docker (docker.io + docker-compose-plugin)"
-    apt install -y docker.io docker-compose-plugin
+    # Docker: skip if already installed. Docker's official repo ships
+    # containerd.io, which conflicts with Ubuntu's docker.io -> containerd, so
+    # blindly installing docker.io on a host that already has Docker (e.g. from
+    # download.docker.com) fails with "containerd.io: Conflicts: containerd".
+    if command -v docker >/dev/null 2>&1; then
+        ok "Docker already installed: $(docker --version 2>&1 | head -n1)"
+        # Best-effort: ensure the compose plugin is present.
+        if ! docker compose version >/dev/null 2>&1; then
+            apt install -y docker-compose-plugin 2>/dev/null || \
+                warn "docker-compose-plugin not found in configured repos. Install it manually if 'docker compose' fails."
+        else
+            ok "Docker Compose plugin available."
+        fi
+    else
+        log "Installing Docker (docker.io + docker-compose-plugin)"
+        apt install -y docker.io docker-compose-plugin
+    fi
 
     # Ensure the invoking user can use Docker without sudo.
     local target_user="${SUDO_USER:-$USER}"
@@ -307,7 +322,7 @@ main() {
     check_interactive
     echo
     printf '%s╔══════════════════════════════════════════════════════╗%s\n' "${C_BLUE}" "${C_RESET}"
-    printf '%s║   Spotify-Downloader — Quick Start Installer         ║%s\n' "${C_BLUE}" "${C_RESET}"
+    printf '%s║   Spotify-Downloader — Installer                     ║%s\n' "${C_BLUE}" "${C_RESET}"
     printf '%s╚══════════════════════════════════════════════════════╝%s\n' "${C_BLUE}" "${C_RESET}"
     echo
 
