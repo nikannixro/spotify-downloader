@@ -227,6 +227,20 @@ valid_token()    { [[ "$1" =~ ^[0-9]{6,}:.+$ ]]; }
 valid_numeric()  { [[ "$1" =~ ^[0-9]+$ ]]; }
 valid_nonempty() { [[ -n "$1" ]]; }
 
+# True if $1 is one or more numeric IDs separated by commas (no empty parts).
+# Used for ADMIN_IDS validation.
+valid_numeric_list() {
+    local s="$1" part
+    [[ -z "$s" ]] && return 1
+    # reject leading/trailing/double commas
+    [[ "$s" == ,* || "$s" == *, || "$s" == *,,* ]] && return 1
+    local IFS=','
+    for part in $s; do
+        [[ "$part" =~ ^[0-9]+$ ]] || return 1
+    done
+    return 0
+}
+
 prompt_for_value() {
     local key="$1" label="$2" hint="$3"
     local current valid value
@@ -262,6 +276,57 @@ prompt_for_value() {
     done
 }
 
+# Unified admin prompt.
+# 1 ID  -> ADMIN_ID  (clears ADMIN_IDS so is_admin() falls back to ADMIN_ID)
+# 2+ IDs -> ADMIN_IDS (clears ADMIN_ID; config.py treats ADMIN_ID as optional)
+# config.py requires at least one of the two to be set.
+prompt_for_admin() {
+    local existing_id existing_ids raw cleaned parts
+
+    existing_id=$(get_env_value "ADMIN_ID")
+    existing_ids=$(get_env_value "ADMIN_IDS")
+
+    if ! is_placeholder "$existing_ids"; then
+        ok "ADMIN_IDS already configured: $existing_ids"
+        printf 'Enter a new comma-separated list to replace it, or press Enter to keep: '
+    elif ! is_placeholder "$existing_id"; then
+        ok "ADMIN_ID already configured: $existing_id"
+        printf 'Enter new ID(s) to replace it, or press Enter to keep: '
+    else
+        echo
+        echo "Enter your Telegram admin user ID."
+        echo "For multiple admins, separate IDs with commas (e.g., 21219313918938,12918281982981)"
+        printf 'Admin ID(s): '
+    fi
+
+    read -r raw
+    # trim leading/trailing whitespace
+    raw="${raw#"${raw%%[![:space:]]*}"}"
+    raw="${raw%"${raw##*[![:space:]]}"}"
+    [[ -z "$raw" ]] && { ok "Keeping existing admin config."; return 0; }
+
+    # strip internal spaces (allow "111, 222, 333")
+    cleaned="${raw// /}"
+
+    if ! valid_numeric_list "$cleaned"; then
+        warn "Invalid format — use numeric IDs separated by commas (e.g., 111,222,333). Admin config unchanged."
+        return 1
+    fi
+
+    local IFS=','
+    read -ra parts <<< "$cleaned"
+    if [[ ${#parts[@]} -eq 1 ]]; then
+        set_env_value "ADMIN_ID" "$cleaned"
+        set_env_value "ADMIN_IDS" ""
+        ok "ADMIN_ID saved: $cleaned"
+    else
+        set_env_value "ADMIN_IDS" "$cleaned"
+        set_env_value "ADMIN_ID" ""
+        ok "ADMIN_IDS saved: $cleaned"
+    fi
+    return 0
+}
+
 configure_env() {
     log "Preparing ${ENV_FILE} from ${EXAMPLE_ENV}"
 
@@ -277,13 +342,13 @@ configure_env() {
         ok "${ENV_FILE} already exists — preserving current values."
     fi
 
-    log "You will now be prompted for the 6 required configuration values."
+    log "You will now be prompted for the required configuration values."
     echo    "Optional settings keep their defaults from ${EXAMPLE_ENV}."
     echo    "Press Ctrl+C at any time to abort."
     echo
 
     prompt_for_value "TELEGRAM_BOT_TOKEN"    "Telegram Bot Token"    "from @BotFather"
-    prompt_for_value "ADMIN_ID"              "Your Telegram user ID" "numeric, e.g. 123456789"
+    prompt_for_admin
     prompt_for_value "TELEGRAM_API_ID"       "Telegram API ID"       "from my.telegram.org"
     prompt_for_value "TELEGRAM_API_HASH"     "Telegram API Hash"     "from my.telegram.org"
     prompt_for_value "SPOTIFY_CLIENT_ID"     "Spotify Client ID"     "from developer.spotify.com"
@@ -305,7 +370,10 @@ print_summary() {
     printf '%s━━━ Installation Complete ━━━%s\n' "${C_GREEN}" "${C_RESET}"
     echo
     log "Container status:"
-    docker compose ps || true
+    docker compose ps --format "table {{.Name}}\t{{.Service}}\t{{.Status}}" 2>/dev/null || docker compose ps || true
+    echo
+    echo "    (Status may show 'health: starting' for ~30s while the healthcheck"
+    echo "     warms up — that is normal.)"
     echo
     printf '%sLogs:%s        docker compose logs -f\n'   "${C_BOLD}" "${C_RESET}"
     printf '%sStop:%s        docker compose down\n'      "${C_BOLD}" "${C_RESET}"
@@ -322,7 +390,7 @@ main() {
     check_interactive
     echo
     printf '%s╔══════════════════════════════════════════════════════╗%s\n' "${C_BLUE}" "${C_RESET}"
-    printf '%s║   Spotify-Downloader — Installer                     ║%s\n' "${C_BLUE}" "${C_RESET}"
+    printf '%s║            Spotify-Downloader — Installer            ║%s\n' "${C_BLUE}" "${C_RESET}"
     printf '%s╚══════════════════════════════════════════════════════╝%s\n' "${C_BLUE}" "${C_RESET}"
     echo
 

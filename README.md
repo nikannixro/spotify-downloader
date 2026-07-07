@@ -130,10 +130,13 @@ All configuration is done through environment variables in `config.env`.
 
 ### Required
 
+> [!NOTE]
+> **At least one admin must be configured**: set `ADMIN_ID` (single) **or** `ADMIN_IDS` (comma-separated, multiple). `ADMIN_IDS` takes priority over `ADMIN_ID` when both are set.
+
 | Variable                 | Description                                                                 |
 | ------------------------ | --------------------------------------------------------------------------- |
 | `TELEGRAM_BOT_TOKEN`     | Bot token from [@BotFather](https://t.me/BotFather)                        |
-| `ADMIN_ID`               | Your Telegram numeric user ID                                              |
+| `ADMIN_ID`               | Single Telegram numeric user ID (required if `ADMIN_IDS` is not set)        |
 | `TELEGRAM_API_ID`        | API ID from [my.telegram.org](https://my.telegram.org)                     |
 | `TELEGRAM_API_HASH`      | API hash from [my.telegram.org](https://my.telegram.org)                   |
 | `SPOTIFY_CLIENT_ID`      | Client ID from [Spotify Developer Dashboard](https://developer.spotify.com/dashboard) |
@@ -155,7 +158,7 @@ All configuration is done through environment variables in `config.env`.
 | `LOG_FILE`                 | `logs/bot.log`       | Path to the log file                                     |
 
 > [!NOTE]
-> **Multiple admins** — use `ADMIN_IDS` (comma-separated) instead of `ADMIN_ID`. When set, it takes priority over `ADMIN_ID`.
+> **Multiple admins** — use `ADMIN_IDS` (comma-separated). When set, it takes priority over `ADMIN_ID`.
 >
 > ```
 > ADMIN_IDS=123456789,987654321

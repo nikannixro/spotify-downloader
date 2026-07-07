@@ -37,7 +37,6 @@ _NOISY_LOGGERS: list[str] = [
 
 REQUIRED_ENV_VARS = [
     "TELEGRAM_BOT_TOKEN",
-    "ADMIN_ID",
     "TELEGRAM_API_ID",
     "TELEGRAM_API_HASH",
     "SPOTIFY_CLIENT_ID",
@@ -116,11 +115,29 @@ def validate_environment() -> None:
         log.error("invalid.token_bot_id")
         sys.exit(1)
 
-    try:
-        int(cfg.ADMIN_ID)
-    except (ValueError, TypeError):
-        log.error("invalid.admin_id", value=cfg.ADMIN_ID)
+    # At least one admin must be configured (ADMIN_ID and/or ADMIN_IDS).
+    admin_id = (cfg.ADMIN_ID or "").strip()
+    admin_ids = (cfg.ADMIN_IDS or "").strip()
+    if not admin_id and not admin_ids:
+        log.error("missing.admin_config", hint="set ADMIN_ID or ADMIN_IDS")
         sys.exit(1)
+
+    # Validate ADMIN_ID if set.
+    if admin_id:
+        try:
+            int(admin_id)
+        except (ValueError, TypeError):
+            log.error("invalid.admin_id", value=admin_id)
+            sys.exit(1)
+
+    # Validate ADMIN_IDS if set: each comma-separated part must be numeric.
+    if admin_ids:
+        for part in [p.strip() for p in admin_ids.split(",") if p.strip()]:
+            try:
+                int(part)
+            except (ValueError, TypeError):
+                log.error("invalid.admin_ids_value", value=part)
+                sys.exit(1)
 
     db_dir = os.path.dirname(cfg.DB_PATH)
     if db_dir and not os.access(db_dir, os.W_OK):

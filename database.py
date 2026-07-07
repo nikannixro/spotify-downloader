@@ -10,7 +10,7 @@ from typing import Any
 
 import aiosqlite
 
-from config import cfg
+from config import admin_ids, cfg
 from models import ChannelRecord
 
 logger = logging.getLogger(__name__)
@@ -128,19 +128,32 @@ class Database:
         await conn.commit()
 
     async def get_users_count(self) -> int:
-        admin_id = int(cfg.ADMIN_ID)
+        admins = admin_ids()
         conn = await self._get_conn()
-        cursor = await conn.execute("SELECT COUNT(*) FROM users WHERE user_id!=?", (admin_id,))
+        if admins:
+            placeholders = ",".join("?" * len(admins))
+            cursor = await conn.execute(
+                f"SELECT COUNT(*) FROM users WHERE user_id NOT IN ({placeholders})",
+                tuple(admins),
+            )
+        else:
+            cursor = await conn.execute("SELECT COUNT(*) FROM users")
         row = await cursor.fetchone()
         return row[0]
 
     async def get_all_user_ids(self) -> list[int]:
-        admin_id = int(cfg.ADMIN_ID)
+        admins = admin_ids()
         conn = await self._get_conn()
-        cursor = await conn.execute(
-            "SELECT user_id FROM users WHERE is_banned=0 AND user_id!=?",
-            (admin_id,),
-        )
+        if admins:
+            placeholders = ",".join("?" * len(admins))
+            cursor = await conn.execute(
+                f"SELECT user_id FROM users WHERE is_banned=0 AND user_id NOT IN ({placeholders})",
+                tuple(admins),
+            )
+        else:
+            cursor = await conn.execute(
+                "SELECT user_id FROM users WHERE is_banned=0",
+            )
         rows = await cursor.fetchall()
         return [row[0] for row in rows]
 

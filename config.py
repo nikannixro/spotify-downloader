@@ -8,7 +8,7 @@ import os
 class _Config:
     # Telegram
     BOT_TOKEN: str = os.environ["TELEGRAM_BOT_TOKEN"]
-    ADMIN_ID: str = os.environ["ADMIN_ID"]
+    ADMIN_ID: str = os.getenv("ADMIN_ID", "")
     ADMIN_IDS: str = os.getenv("ADMIN_IDS", "")
     API_ID: str = os.environ["TELEGRAM_API_ID"]
     API_HASH: str = os.environ["TELEGRAM_API_HASH"]
@@ -44,6 +44,19 @@ class _Config:
 
 
 cfg = _Config()
+
+
+def admin_ids() -> set[int]:
+    """Return all configured admin user IDs.
+
+    Uses ADMIN_IDS (comma-separated) when set, otherwise falls back to
+    ADMIN_ID. Returns an empty set if neither is configured.
+    """
+    if cfg.ADMIN_IDS:
+        return {int(s.strip()) for s in cfg.ADMIN_IDS.split(",") if s.strip()}
+    if cfg.ADMIN_ID:
+        return {int(cfg.ADMIN_ID)}
+    return set()
 
 
 def is_admin(uid: int) -> bool:
