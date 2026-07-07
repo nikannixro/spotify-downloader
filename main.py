@@ -25,7 +25,7 @@ from pyrogram.methods.utilities.idle import idle  # noqa: E402
 import plugins.download_manager as download_manager  # noqa: E402
 from config import cfg  # noqa: E402
 from services import close_all, get_cache, get_db  # noqa: E402
-from utils.log_channel_handler import TelegramLogHandler  # noqa: E402
+from utils.log_channel_handler import get_log_channel_handler  # noqa: E402
 
 _NOISY_LOGGERS: list[str] = [
     "httpx",
@@ -33,7 +33,6 @@ _NOISY_LOGGERS: list[str] = [
     "spotipy",
     "urllib3",
     "pyrogram",
-    "musicbrainzngs",
 ]
 
 REQUIRED_ENV_VARS = [
@@ -47,7 +46,7 @@ REQUIRED_ENV_VARS = [
 
 log = structlog.get_logger()
 
-_log_channel_handler = TelegramLogHandler()
+_log_channel_handler = get_log_channel_handler()
 
 
 class _LazyFileHandler(logging.FileHandler):
@@ -123,13 +122,6 @@ def validate_environment() -> None:
         log.error("invalid.admin_id", value=cfg.ADMIN_ID)
         sys.exit(1)
 
-    if cfg.ADMIN_IDS:
-        for part in cfg.ADMIN_IDS.split(","):
-            part = part.strip()
-            if part and not part.isdigit():
-                log.error("invalid.admin_ids_entry", value=part)
-                sys.exit(1)
-
     db_dir = os.path.dirname(cfg.DB_PATH)
     if db_dir and not os.access(db_dir, os.W_OK):
         try:
@@ -163,6 +155,11 @@ async def on_startup(app: Client) -> None:
     db = get_db()
     await db.ensure_initialized()
     log.info("database.ready", path=db.get_path())
+
+    # Load persisted log-channel settings into the handler so logs flow to the
+    # configured Telegram channel immediately after startup (without requiring
+    # an admin to re-configure it via the panel).
+    await _log_channel_handler.reload()
 
     cache = get_cache()
     removed = await cache.cleanup()

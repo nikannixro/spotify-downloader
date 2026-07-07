@@ -12,6 +12,7 @@ from handlers.states import get_user_data
 from models import AdminState
 from services import get_db
 from utils.keyboards import back_reply_keyboard
+from utils.log_channel_handler import get_log_channel_handler
 
 
 logger = logging.getLogger(__name__)
@@ -47,6 +48,7 @@ async def _handle_lc_toggle(callback_query: CallbackQuery, db) -> int:
     current = await db.get_setting("log_channel_enabled", "0")
     new_value = "0" if current == "1" else "1"
     await db.set_setting("log_channel_enabled", new_value)
+    await get_log_channel_handler().reload()
 
     text, kb = await _log_channel_text(db)
     await callback_query.message.edit_text(text, reply_markup=kb)
@@ -66,6 +68,7 @@ async def _handle_lc_remove(callback_query: CallbackQuery, db) -> int:
     get_user_data(callback_query.from_user.id).pop("on_admin_main", None)
     await db.set_setting("log_channel_id", "")
     await db.set_setting("log_channel_enabled", "0")
+    await get_log_channel_handler().reload()
 
     text, kb = await _log_channel_text(db)
     await callback_query.message.edit_text(text, reply_markup=kb)
@@ -129,6 +132,7 @@ async def h_log_channel_handler(client: Client, message: Message) -> int:
         db = get_db()
         await db.set_setting("log_channel_id", str(chat.id))
         await db.set_setting("log_channel_enabled", "1")
+        await get_log_channel_handler().reload()
 
         channel_username = f"@{chat.username}" if chat.username else str(chat.id)
         await message.reply_text(

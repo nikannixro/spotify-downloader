@@ -18,44 +18,80 @@ class TelegramLogHandler(logging.Handler):
         self._client = client
         self._channel_id: int | None = None
         self._enabled = False
+        # Tracks whether settings have been successfully loaded at least once.
+        self._loaded = False
+        # Guards against scheduling multiple concurrent reloads from emit().
+        self._reload_pending = False
 
     def set_client(self, client: Client) -> None:
         """Set the Pyrogram client instance."""
         self._client = client
 
-    async def _update_settings(self) -> None:
-        """Update channel ID and enabled status from database."""
+    async def reload(self) -> bool:
+        """Load (or refresh) channel ID and enabled status from the database.
+
+        Returns True if settings were successfully loaded. Failures are logged
+        to stderr (via the module logger) rather than swallowed silently, so
+        misconfiguration is visible. This method is safe to call repeatedly.
+        """
         from services import get_db
 
         try:
             db = get_db()
             channel_id = await db.get_setting("log_channel_id", "")
             enabled = await db.get_setting("log_channel_enabled", "0") == "1"
-        except Exception:
-            return
+        except Exception as exc:
+            # Don't mark as loaded — emit() will keep retrying.
+            logging.getLogger(__name__).warning(
+                "log_channel.reload_failed: %s", exc, exc_info=False
+            )
+            return False
 
         if channel_id and enabled:
             try:
                 self._channel_id = int(channel_id)
                 self._enabled = True
-            except ValueError:
+            except (TypeError, ValueError):
                 self._channel_id = None
                 self._enabled = False
+                logging.getLogger(__name__).warning(
+                    "log_channel.invalid_channel_id: %r", channel_id
+                )
         else:
             self._channel_id = None
             self._enabled = False
+
+        self._loaded = True
+        return True
+
+    def _schedule_reload(self) -> None:
+        """Schedule an async reload from within sync emit() if one isn't pending."""
+        if self._reload_pending:
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return  # No running loop (e.g., during shutdown / before startup)
+        self._reload_pending = True
+
+        async def _do_reload() -> None:
+            try:
+                await self.reload()
+            finally:
+                self._reload_pending = False
+
+        asyncio.ensure_future(_do_reload())
 
     def emit(self, record: logging.LogRecord) -> None:
         """Emit a log record by sending it to the configured channel."""
         if not self._client:
             return
 
-        if not self._enabled:
-            try:
-                loop = asyncio.get_running_loop()
-                asyncio.ensure_future(self._update_settings())
-            except RuntimeError:
-                return
+        # If settings haven't been loaded yet, kick off a lazy reload. The
+        # current record is necessarily dropped (reload is async), but once the
+        # reload completes subsequent records will flow.
+        if not self._loaded:
+            self._schedule_reload()
 
         if not self._enabled or not self._channel_id:
             return
@@ -84,4 +120,22 @@ class TelegramLogHandler(logging.Handler):
                     disable_web_page_preview=True,
                 )
         except Exception:
-            pass  # Silently fail to avoid infinite recursion
+            # Silently fail to avoid infinite recursion (a failed send would
+            # itself log, re-triggering this handler).
+            pass
+
+
+# ── Module-level singleton ──────────────────────────────────────────────────
+# A single handler instance is shared between main.py (which attaches it to the
+# root logger) and the admin handlers (which trigger reloads after settings
+# change). Using functools.cache-style access keeps the wiring centralized.
+
+_log_channel_handler: TelegramLogHandler | None = None
+
+
+def get_log_channel_handler() -> TelegramLogHandler:
+    """Return the shared TelegramLogHandler singleton."""
+    global _log_channel_handler
+    if _log_channel_handler is None:
+        _log_channel_handler = TelegramLogHandler()
+    return _log_channel_handler
