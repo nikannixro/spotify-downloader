@@ -295,7 +295,7 @@ prompt_for_admin() {
     else
         echo
         echo "Enter your Telegram admin user ID."
-        echo "For multiple admins, separate IDs with commas (e.g., 21219313918938,12918281982981)"
+        echo "For multiple admins, separate IDs with commas (e.g., 1122334455,6677889911)"
         printf 'Admin ID(s): '
     fi
 
