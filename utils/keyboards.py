@@ -124,7 +124,7 @@ def channel_remove_keyboard(channels: list[ChannelRecord]) -> InlineKeyboardMark
     return InlineKeyboardMarkup(kb)
 
 
-def broadcast_confirm_keyboard(user_count: int) -> InlineKeyboardMarkup:
+def broadcast_confirm_keyboard() -> InlineKeyboardMarkup:
     """Build the broadcast confirmation keyboard."""
     return InlineKeyboardMarkup(
         [

@@ -184,9 +184,6 @@ def _build_filename(meta: TrackMetadata) -> str:
     return f"{artist} - {title}.flac"
 
 
-
-
-
 def _set_event_loop_for_worker() -> None:
     """Ensure the current thread has an event loop (needed for spotDL in executor threads)."""
     try:
@@ -461,6 +458,7 @@ async def _enrich_metadata(meta: TrackMetadata) -> None:
         _mb_log("info", "No composer from MusicBrainz")
 
     if mb_data.get("writer"):
+        meta.writer = mb_data["writer"]
         _mb_log("info", "Writer from MusicBrainz", writer=mb_data["writer"])
 
     if mb_data.get("language"):
@@ -526,7 +524,6 @@ class SpotDLBackend:
     async def download_track(self, track_url: str, user_id: int = 0) -> DownloadResult:
         """Download a single Spotify track."""
         from plugins.download_manager import register_temp_dir, unregister_temp_dir
-        from plugins.ytdl import download_track as ytdl_download
 
         tmp_dir = tempfile.mkdtemp(prefix="spotdl_")
         if user_id:
@@ -534,43 +531,12 @@ class SpotDLBackend:
 
         try:
             loop = asyncio.get_running_loop()
-
             song = await loop.run_in_executor(
                 None, _run_spotdl_fetch_song, track_url
             )
             if song is None:
                 return DownloadResult(success=False, error="Failed to fetch track metadata")
-
-            artists = song.artists if song.artists else [song.artist or "Unknown"]
-            query = f"{artists[0]} - {song.name}"
-            cookie_file = str(Path(cfg.COOKIE_FILE).resolve()) if cfg.COOKIE_FILE else None
-
-            file_path = await loop.run_in_executor(
-                None, ytdl_download, query, tmp_dir, cookie_file
-            )
-
-            if file_path is None or not os.path.isfile(file_path):
-                return DownloadResult(success=False, error="Download failed")
-
-            meta = _song_to_metadata(song)
-            logger.debug("SpotDL metadata: publisher=%s, genres=%s, isrc=%s", meta.publisher, meta.genres, meta.isrc)
-
-            await _enrich_metadata(meta)
-
-            safe_name = _build_filename(meta)
-            final_path = os.path.join(tmp_dir, safe_name)
-            if os.path.abspath(file_path) != os.path.abspath(final_path):
-                shutil.move(file_path, final_path)
-
-            _post_process_flac(final_path, meta)
-
-            logger.info("Download complete: %s", safe_name)
-            return DownloadResult(
-                success=True,
-                file_path=final_path,
-                filename=safe_name,
-                metadata=meta,
-            )
+            return await self._download_song_impl(song, tmp_dir, track_url)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -583,45 +549,13 @@ class SpotDLBackend:
     async def download_song(self, song, user_id: int = 0) -> DownloadResult:
         """Download a pre-fetched spotDL Song object."""
         from plugins.download_manager import register_temp_dir, unregister_temp_dir
-        from plugins.ytdl import download_track as ytdl_download
 
         tmp_dir = tempfile.mkdtemp(prefix="spotdl_")
         if user_id:
             register_temp_dir(user_id, tmp_dir)
 
         try:
-            loop = asyncio.get_running_loop()
-
-            artists = song.artists if song.artists else [song.artist or "Unknown"]
-            query = f"{artists[0]} - {song.name}"
-            cookie_file = str(Path(cfg.COOKIE_FILE).resolve()) if cfg.COOKIE_FILE else None
-
-            file_path = await loop.run_in_executor(
-                None, ytdl_download, query, tmp_dir, cookie_file
-            )
-
-            if file_path is None or not os.path.isfile(file_path):
-                return DownloadResult(success=False, error="Download failed")
-
-            meta = _song_to_metadata(song)
-            logger.debug("SpotDL metadata: publisher=%s, genres=%s, isrc=%s", meta.publisher, meta.genres, meta.isrc)
-
-            await _enrich_metadata(meta)
-
-            safe_name = _build_filename(meta)
-            final_path = os.path.join(tmp_dir, safe_name)
-            if os.path.abspath(file_path) != os.path.abspath(final_path):
-                shutil.move(file_path, final_path)
-
-            _post_process_flac(final_path, meta)
-
-            logger.info("Download complete: %s", safe_name)
-            return DownloadResult(
-                success=True,
-                file_path=final_path,
-                filename=safe_name,
-                metadata=meta,
-            )
+            return await self._download_song_impl(song, tmp_dir)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -630,6 +564,43 @@ class SpotDLBackend:
         finally:
             if user_id:
                 unregister_temp_dir(user_id, tmp_dir)
+
+    async def _download_song_impl(self, song, tmp_dir: str, source_url: str = "") -> DownloadResult:
+        """Shared download logic for a spotDL Song object."""
+        from plugins.ytdl import download_track as ytdl_download
+
+        loop = asyncio.get_running_loop()
+
+        artists = song.artists if song.artists else [song.artist or "Unknown"]
+        query = f"{artists[0]} - {song.name}"
+        cookie_file = str(Path(cfg.COOKIE_FILE).resolve()) if cfg.COOKIE_FILE else None
+
+        file_path = await loop.run_in_executor(
+            None, ytdl_download, query, tmp_dir, cookie_file
+        )
+
+        if file_path is None or not os.path.isfile(file_path):
+            return DownloadResult(success=False, error="Download failed")
+
+        meta = _song_to_metadata(song)
+        logger.debug("SpotDL metadata: publisher=%s, genres=%s, isrc=%s", meta.publisher, meta.genres, meta.isrc)
+
+        await _enrich_metadata(meta)
+
+        safe_name = _build_filename(meta)
+        final_path = os.path.join(tmp_dir, safe_name)
+        if os.path.abspath(file_path) != os.path.abspath(final_path):
+            shutil.move(file_path, final_path)
+
+        _post_process_flac(final_path, meta)
+
+        logger.info("Download complete: %s", safe_name)
+        return DownloadResult(
+            success=True,
+            file_path=final_path,
+            filename=safe_name,
+            metadata=meta,
+        )
 
     async def get_album_songs(self, album_url: str) -> tuple[dict[str, Any] | None, list]:
         """Fetch album metadata and songs."""

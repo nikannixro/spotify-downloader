@@ -61,7 +61,4 @@ def admin_ids() -> set[int]:
 
 def is_admin(uid: int) -> bool:
     """Return True if *uid* matches any configured admin ID."""
-    if cfg.ADMIN_IDS:
-        admins = {s.strip() for s in cfg.ADMIN_IDS.split(",") if s.strip()}
-        return str(uid) in admins
-    return str(uid) == cfg.ADMIN_ID
+    return uid in admin_ids()

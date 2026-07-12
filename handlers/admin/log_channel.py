@@ -64,10 +64,10 @@ async def _handle_lc_set(callback_query: CallbackQuery) -> int:
 
 
 async def _handle_lc_remove(callback_query: CallbackQuery, db) -> int:
-    """Remove configured log channel."""
+    """Remove configured log channel (keep feature enabled)."""
     get_user_data(callback_query.from_user.id).pop("on_admin_main", None)
     await db.set_setting("log_channel_id", "")
-    await db.set_setting("log_channel_enabled", "0")
+    await db.set_setting("log_channel_username", "")
     await get_log_channel_handler().reload()
 
     text, kb = await _log_channel_text(db)

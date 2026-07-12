@@ -83,6 +83,10 @@ class TelegramLogHandler(logging.Handler):
         (see handlers/admin/log_channel.py). If absent (e.g. private channel
         or older config), this is a no-op and delivery relies on the persisted
         session instead.
+
+        If the channel is no longer accessible (deleted, bot removed, etc.),
+        the saved configuration is cleared and the admin is notified so they
+        can set a new log channel.
         """
         if not self._client:
             return
@@ -106,13 +110,17 @@ class TelegramLogHandler(logging.Handler):
                 f"@{username}: {exc}",
                 file=sys.stderr,
             )
+            await self._clear_and_notify_admin(
+                f"⚠️ کانال لاگ @{username} دیگر در دسترس نیست.\n"
+                "لطفاً یک کانال لاگ جدید از پنل مدیریت تنظیم کنید."
+            )
 
     def _schedule_reload(self) -> None:
         """Schedule an async reload from within sync emit() if one isn't pending."""
         if self._reload_pending:
             return
         try:
-            loop = asyncio.get_running_loop()
+            asyncio.get_running_loop()
         except RuntimeError:
             return  # No running loop (e.g., during shutdown / before startup)
         self._reload_pending = True
@@ -123,7 +131,7 @@ class TelegramLogHandler(logging.Handler):
             finally:
                 self._reload_pending = False
 
-        asyncio.ensure_future(_do_reload())
+        asyncio.create_task(_do_reload())
 
     def emit(self, record: logging.LogRecord) -> None:
         """Emit a log record by sending it to the configured channel."""
@@ -149,7 +157,7 @@ class TelegramLogHandler(logging.Handler):
         try:
             loop = asyncio.get_running_loop()
             if loop.is_running():
-                asyncio.ensure_future(self._send_message(msg))
+                asyncio.create_task(self._send_message(msg))
         except RuntimeError:
             pass  # No running loop (e.g., during shutdown)
 
@@ -177,6 +185,48 @@ class TelegramLogHandler(logging.Handler):
                     f"(further failures suppressed): {exc}",
                     file=sys.stderr,
                 )
+
+            # Permanent channel errors → clear config and notify admin so
+            # log sending can be reconfigured rather than failing forever.
+            from pyrogram.errors import (
+                ChannelInvalid,
+                ChannelPrivate,
+                ChatWriteForbiddenError,
+                PeerIdInvalidError,
+            )
+
+            if isinstance(exc, (ChannelPrivate, ChannelInvalid, PeerIdInvalidError, ChatWriteForbiddenError)):
+                await self._clear_and_notify_admin(
+                    "⚠️ کانال لاگ دیگر در دسترس نیست.\n"
+                    "لطفاً یک کانال لاگ جدید از پنل مدیریت تنظیم کنید."
+                )
+
+    async def _clear_and_notify_admin(self, reason: str) -> None:
+        """Clear saved log channel config and send a DM to the admin."""
+        from config import admin_ids
+        from services import get_db
+
+        self._channel_id = None
+        self._enabled = False
+
+        try:
+            db = get_db()
+            await db.set_setting("log_channel_id", "")
+            await db.set_setting("log_channel_enabled", "0")
+            await db.set_setting("log_channel_username", "")
+        except Exception:
+            pass
+
+        # DM every configured admin so they know to reconfigure.
+        if self._client:
+            for admin_id in admin_ids():
+                try:
+                    await self._client.send_message(
+                        chat_id=admin_id,
+                        text=reason,
+                    )
+                except Exception:
+                    pass
 
 
 # ── Module-level singleton ──────────────────────────────────────────────────

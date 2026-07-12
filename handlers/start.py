@@ -126,7 +126,6 @@ async def _handle_track_deep_link(
         return
 
     # Rate limit
-    from config import is_admin
     from services import get_rate_limiter
 
     rate_limiter = get_rate_limiter()

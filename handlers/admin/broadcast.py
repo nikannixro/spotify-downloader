@@ -47,7 +47,7 @@ async def h_broadcast_handler(client: Client, message: Message) -> int:
     user_count = await db.get_users_count()
     await message.reply_text(
         f"این پیام به {user_count} نفر ارسال میشود آیا تأیید میکنید",
-        reply_markup=broadcast_confirm_keyboard(user_count),
+        reply_markup=broadcast_confirm_keyboard(),
     )
     return AdminState.WAIT_BROADCAST_CONFIRM
 

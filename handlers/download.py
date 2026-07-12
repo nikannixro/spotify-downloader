@@ -239,8 +239,6 @@ async def _download_inline_track(
     client: Client, message: Message, user_id: int, track_id: str
 ) -> None:
     """Download track from inline search — sends audio only, no caption."""
-    from utils.helpers import download_cover_bytes
-
     spotdl = get_spotdl()
     url = f"https://open.spotify.com/track/{track_id}"
 

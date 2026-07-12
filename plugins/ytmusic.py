@@ -17,27 +17,12 @@ _deezer = DeezerClient()
 def _get_artist_top_tracks_sync(artist_name: str, limit: int = 10) -> list[dict[str, Any]]:
     """Fetch artist top tracks via Deezer (search artist → get top tracks)."""
     try:
-        import requests as req
-
-        resp = req.get(
-            "https://api.deezer.com/search/artist",
-            params={"q": artist_name, "limit": 1},
-            timeout=10,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        artists = data.get("data", [])
+        artists = _deezer._search_artists_sync(artist_name, limit=1)
         if not artists:
             return []
 
         artist_id = artists[0].get("id")
-        resp2 = req.get(
-            f"https://api.deezer.com/artist/{artist_id}/top",
-            params={"limit": limit},
-            timeout=10,
-        )
-        resp2.raise_for_status()
-        tracks = resp2.json().get("data", [])
+        tracks = _deezer._get_artist_top_tracks_sync(str(artist_id), limit=limit)
 
         return [
             {
