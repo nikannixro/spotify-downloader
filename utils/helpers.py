@@ -100,6 +100,13 @@ def sanitize_filename(name: str) -> str:
     return name[:200] if name else "untitled"
 
 
+def sanitize_slug(text: str) -> str:
+    """Convert text to a Telegram-safe slug: lowercase alphanumeric + single underscores."""
+    text = re.sub(r'[^a-zA-Z0-9\s]', '', text)
+    text = re.sub(r'\s+', '_', text.strip())
+    return text.lower()
+
+
 def _format_uptime(seconds: int) -> str:
     """Format seconds into a human-readable 'Nd Nh Nm Ns' string."""
     days, remainder = divmod(seconds, 86400)

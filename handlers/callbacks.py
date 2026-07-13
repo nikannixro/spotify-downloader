@@ -11,6 +11,7 @@ from pyrogram.types import CallbackQuery
 
 import plugins.download_manager as download_manager
 from config import is_admin
+from utils.helpers import sanitize_slug
 from handlers.admin import (
     RATE_LIMIT_DELTAS,
     RATE_WINDOW_DELTAS,
@@ -260,8 +261,6 @@ async def _handle_show_artist_tracks(
     client: Client, callback_query: CallbackQuery
 ) -> None:
     """Send a new message with clickable deep links for top tracks."""
-    from urllib.parse import quote
-
     import config
     from handlers.download import _artist_tracks_cache
 
@@ -277,9 +276,8 @@ async def _handle_show_artist_tracks(
     for i, track in enumerate(tracks):
         title = track.get("title", f"Track {i + 1}")
         artist = track.get("artist", "Unknown")
-        key = f"{artist}_{title}".replace(" ", "_").lower()
-        encoded = quote(key, safe="")
-        url = f"https://t.me/{bot_username}?start={encoded}"
+        key = sanitize_slug(f"{artist} {title}")
+        url = f"https://t.me/{bot_username}?start={key}"
         lines.append(f'{artist} - {title}')
         lines.append(f'<a href="{url}">Download</a>')
         lines.append('--------------------------')
