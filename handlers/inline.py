@@ -24,6 +24,7 @@ from strings import MAINTENANCE_INLINE, NOT_JOINED_INLINE
 logger = logging.getLogger(__name__)
 
 _deezer = DeezerClient()
+_DEEZER_SEMAPHORE = asyncio.Semaphore(3)
 
 SEARCH_PREFIXES: dict[str, SearchType] = {
     "artist:": SearchType.ARTIST,
@@ -93,13 +94,18 @@ async def inline_search(client: Client, inline_query: InlineQuery) -> None:
     if search_type == SearchType.ARTIST:
         artist_items = data.get("artists", {}).get("items", [])
         names = [item.get("name", "") for item in artist_items]
-        tasks = [_deezer.search_artists(n, limit=1) if n else asyncio.sleep(0) for n in names]
+
+        async def _throttled_search(name: str) -> dict[str, Any] | None:
+            async with _DEEZER_SEMAPHORE:
+                return await _deezer.search_artist_best_match(name, name, limit=5)
+
+        tasks = [_throttled_search(n) if n else asyncio.sleep(0) for n in names]
         deezer_results = await asyncio.gather(*tasks, return_exceptions=True)
         for name, result in zip(names, deezer_results):
             if not name or isinstance(result, Exception):
                 continue
             if result:
-                followers_map[name.lower()] = result[0].get("nb_fan", 0)
+                followers_map[name.lower()] = result.get("nb_fan", 0)
 
     if search_type == SearchType.PLAYLIST:
         items = data.get("playlists", {}).get("items", [])

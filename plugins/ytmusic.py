@@ -17,11 +17,11 @@ _deezer = DeezerClient()
 def _get_artist_top_tracks_sync(artist_name: str, limit: int = 10) -> list[dict[str, Any]]:
     """Fetch artist top tracks via Deezer (search artist → get top tracks)."""
     try:
-        artists = _deezer._search_artists_sync(artist_name, limit=1)
+        artists = _deezer._search_artists_sync(artist_name, limit=5, retries=2)
         if not artists:
             return []
 
-        artist_id = artists[0].get("id")
+        artist_id = max(artists, key=lambda a: a.get("nb_fan", 0)).get("id")
         tracks = _deezer._get_artist_top_tracks_sync(str(artist_id), limit=limit)
 
         return [
